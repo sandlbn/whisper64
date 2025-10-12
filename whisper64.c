@@ -709,25 +709,35 @@ void load_directory() {
         int blocks_hi = cbm_k_chrin();
         int blocks = blocks_lo + (blocks_hi << 8);
         
-        // Read file type byte
-        file_type_byte = cbm_k_chrin();
-        file_type = file_type_byte & 0x07;  // Lower 3 bits are file type
+        // Read the entire line into a buffer
+        char full_line[40];
+        int full_line_pos = 0;
+        memset(full_line, 0, 40);
         
-        // Read the rest of the line
+        while (full_line_pos < 39) {
+            c = cbm_k_chrin();
+            if (c == 0) break;  // End of line
+            full_line[full_line_pos++] = c;
+        }
+        full_line[full_line_pos] = '\0';
+        
+        // Parse the line to extract filename
         line_pos = 0;
         in_name = 0;
         memset(line_buf, 0, 40);
         
-        while (1) {
-            c = cbm_k_chrin();
-            if (c == 0) break;  // End of line
-            
-            if (c == '"') {
-                in_name = !in_name;
-            } else if (in_name && line_pos < 16) {
-                line_buf[line_pos++] = c;
+        for (int i = 0; i < full_line_pos && line_pos < 16; i++) {
+            if (full_line[i] == '"') {
+                if (!in_name) {
+                    in_name = 1;  // Start of filename
+                } else {
+                    break;  // End of filename
+                }
+            } else if (in_name) {
+                line_buf[line_pos++] = full_line[i];
             }
         }
+        line_buf[line_pos] = '\0';
         
         // First line is disk name
         if (num_dir_entries == 0 && blocks == 0) {
@@ -736,10 +746,37 @@ void load_directory() {
             continue;
         }
         
-        // Check if this is "BLOCKS FREE" line
-        if (blocks_lo == 255 && blocks_hi == 255) {
+        // Check if this is "BLOCKS FREE" line - empty filename or special blocks value
+        if (line_buf[0] == '\0') {
             blocks_free = blocks;
             break;
+        }
+        
+        // Extract file type from the line (last 3-4 chars usually)
+        file_type = 2;  // Default to PRG
+        file_type_byte = 0x82;  // PRG, closed
+        
+        // Look for file type keywords in the full line
+        if (strstr(full_line, "DEL")) {
+            file_type = 0;
+            file_type_byte = 0x80;
+        } else if (strstr(full_line, "SEQ")) {
+            file_type = 1;
+            file_type_byte = 0x81;
+        } else if (strstr(full_line, "PRG")) {
+            file_type = 2;
+            file_type_byte = 0x82;
+        } else if (strstr(full_line, "USR")) {
+            file_type = 3;
+            file_type_byte = 0x83;
+        } else if (strstr(full_line, "REL")) {
+            file_type = 4;
+            file_type_byte = 0x84;
+        }
+        
+        // Check for locked files (asterisk after type)
+        if (strchr(full_line, '*') != NULL) {
+            file_type_byte |= 0x40;
         }
         
         // Store entry
