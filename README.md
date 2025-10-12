@@ -7,7 +7,8 @@ A simple text editor for the Commodore 64.
 ## Features
 
 - BASIC keyword syntax highlighting
-- Line numbers with 90-line capacity
+- Line numbers with cursor position display (line:column)
+- 256-line capacity with automatic paging (64 lines per page)
 - Directory browser with multi-drive support (drives 8-15)
 - Search and replace functionality
 - Copy/paste with mark mode
