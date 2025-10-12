@@ -16,9 +16,10 @@
 #define SCREEN_HEIGHT 25
 #define EDIT_WIDTH 37
 #define EDIT_HEIGHT 23
-#define MAX_LINES 90
+#define MAX_LINES 256
 #define MAX_LINE_LENGTH 220
 #define MAX_DIR_ENTRIES 100
+#define LINES_PER_PAGE 64
 
 #define SCREEN_RAM ((unsigned char *)0x0400)
 
@@ -42,13 +43,17 @@
 #define PEEK(addr) (*(unsigned char*)(addr))
 
 // Text buffer
-char lines[MAX_LINES][MAX_LINE_LENGTH];
+char lines[LINES_PER_PAGE][MAX_LINE_LENGTH];
 int num_lines = 1;
+int total_lines = 1;
+int current_page = 0;
+int num_pages = 1;
 int cursor_x = 0;
 int cursor_y = 0;
 int scroll_offset = 0;
 int current_drive = 8;  // Current drive number
 char current_filename[17] = "";  // Remember loaded filename
+char page_modified = 0;
 
 // Search/Replace state
 char search_term[40];
@@ -73,6 +78,9 @@ typedef struct {
 DirEntry dir_entries[MAX_DIR_ENTRIES];
 int num_dir_entries = 0;
 char disk_name[17];
+
+// Temporary file for paging
+#define TEMP_FILE "$$WHISPER$$"
 
 // Colors
 #define COL_WHITE 1
@@ -136,10 +144,120 @@ int is_basic_keyword(const char *word) {
     return 0;
 }
 
+// Paging functions
+void save_current_page_to_temp() {
+    char temp_name[20];
+    int i, len;
+    
+    if (!page_modified || total_lines <= LINES_PER_PAGE) {
+        return;
+    }
+    
+    sprintf(temp_name, "%s.P%d", TEMP_FILE, current_page);
+    
+    cbm_k_setlfs(2, current_drive, 2);
+    cbm_k_setnam(temp_name);
+    
+    if (cbm_k_open() == 0) {
+        cbm_k_chkout(2);
+        
+        for (i = 0; i < num_lines; i++) {
+            len = strlen(lines[i]);
+            for (int j = 0; j < len; j++) {
+                cbm_k_chrout(lines[i][j]);
+            }
+            if (i < num_lines - 1) {
+                cbm_k_chrout(13);
+            }
+        }
+        
+        cbm_k_clrch();
+        cbm_k_close(2);
+        page_modified = 0;
+    }
+}
+
+void load_page(int page_num) {
+    char temp_name[20];
+    int i, pos;
+    unsigned char ch;
+    
+    if (page_num == current_page) return;
+    
+    // Save current page if modified
+    save_current_page_to_temp();
+    
+    current_page = page_num;
+    memset(lines, 0, sizeof(lines));
+    
+    if (total_lines <= LINES_PER_PAGE) {
+        // All in memory, no need to load
+        num_lines = total_lines;
+        return;
+    }
+    
+    sprintf(temp_name, "%s.P%d", TEMP_FILE, page_num);
+    
+    cbm_k_setlfs(2, current_drive, 2);
+    cbm_k_setnam(temp_name);
+    
+    if (cbm_k_open() == 0) {
+        i = 0;
+        pos = 0;
+        cbm_k_chkin(2);
+        
+        while (i < LINES_PER_PAGE) {
+            ch = cbm_k_chrin();
+            if (cbm_k_readst() & 0x40) break;
+            
+            if (ch == '\r' || ch == '\n') {
+                lines[i][pos] = '\0';
+                i++;
+                pos = 0;
+            } else if (pos < MAX_LINE_LENGTH - 1) {
+                lines[i][pos++] = ch;
+            }
+        }
+        
+        if (pos > 0 || i == 0) {
+            lines[i][pos] = '\0';
+            i++;
+        }
+        
+        cbm_k_clrch();
+        cbm_k_close(2);
+        
+        num_lines = i;
+    } else {
+        num_lines = 1;
+    }
+}
+
+void check_page_boundary() {
+    int global_line = current_page * LINES_PER_PAGE + cursor_y;
+    
+    // Check if we need to move to next page
+    if (cursor_y >= LINES_PER_PAGE && current_page < num_pages - 1) {
+        load_page(current_page + 1);
+        cursor_y = 0;
+        scroll_offset = 0;
+    }
+    // Check if we need to move to previous page
+    else if (cursor_y < 0 && current_page > 0) {
+        load_page(current_page - 1);
+        cursor_y = LINES_PER_PAGE - 1;
+        scroll_offset = cursor_y - EDIT_HEIGHT + 1;
+        if (scroll_offset < 0) scroll_offset = 0;
+    }
+}
+
 void init_editor() {
     clrscr();
     memset(lines, 0, sizeof(lines));
     num_lines = 1;
+    total_lines = 1;
+    current_page = 0;
+    num_pages = 1;
     cursor_x = 0;
     cursor_y = 0;
     scroll_offset = 0;
@@ -148,6 +266,7 @@ void init_editor() {
     mark_active = 0;
     clipboard_lines = 0;
     current_filename[0] = '\0';
+    page_modified = 0;
     
     POKE(0xD020, 0);
     POKE(0xD021, 0);
@@ -255,22 +374,39 @@ void draw_text_line(int screen_row, int line_num) {
 
 void redraw_screen() {
     int i;
-    char title[25];
+    char title[40];
+    int global_line = current_page * LINES_PER_PAGE + cursor_y + 1;
     
+    // Title with filename
     if (current_filename[0] != '\0') {
-        sprintf(title, "%.10s", current_filename);
+        sprintf(title, "%.8s", current_filename);
         cputs_at(0, 0, title, COL_YELLOW);
     } else {
-        cputs_at(0, 0, "WHISPER64", COL_YELLOW);
+        cputs_at(0, 0, "WHISPER", COL_YELLOW);
     }
     
+    // Cursor position (Line:Column)
+    char pos_info[15];
+    sprintf(pos_info, " %d:%d", global_line, cursor_x + 1);
+    cputs_at(8, 0, pos_info, COL_GREEN);
+    
     if (mark_active) {
-        cputs_at(11, 0, "[MARK]", COL_GREEN);
+        cputs_at(17, 0, "[M]", COL_GREEN);
     }
+    
+    // Drive info
     char drive_info[10];
     sprintf(drive_info, " D:%d", current_drive);
     cputs_at(30, 0, drive_info, COL_CYAN);
-    for (i = (mark_active ? 17 : 10); i < 30; i++) {
+    
+    // Page info if multiple pages
+    if (num_pages > 1) {
+        char page_info[10];
+        sprintf(page_info, " P%d/%d", current_page + 1, num_pages);
+        cputs_at(22, 0, page_info, COL_CYAN);
+    }
+    
+    for (i = (mark_active ? 20 : 16); i < (num_pages > 1 ? 22 : 30); i++) {
         cputc_at(i, 0, ' ', COL_YELLOW);
     }
     
@@ -325,9 +461,10 @@ void insert_char(char c) {
         
         lines[cursor_y][cursor_x] = c;
         cursor_x++;
+        page_modified = 1;
         
         if (cursor_x >= EDIT_WIDTH) {
-            if (num_lines < MAX_LINES - 1) {
+            if (num_lines < LINES_PER_PAGE - 1) {
                 memmove(&lines[cursor_y + 2], &lines[cursor_y + 1], 
                         (num_lines - cursor_y - 1) * sizeof(lines[0]));
                 
@@ -335,6 +472,7 @@ void insert_char(char c) {
                 lines[cursor_y][EDIT_WIDTH] = '\0';
                 
                 num_lines++;
+                total_lines++;
                 cursor_y++;
                 cursor_x = 0;
                 
@@ -354,6 +492,7 @@ void delete_char() {
                 &lines[cursor_y][cursor_x], 
                 len - cursor_x + 1);
         cursor_x--;
+        page_modified = 1;
     } else if (cursor_y > 0) {
         int prev_len = strlen(lines[cursor_y - 1]);
         if (prev_len + len < MAX_LINE_LENGTH) {
@@ -363,9 +502,11 @@ void delete_char() {
                     (num_lines - cursor_y - 1) * sizeof(lines[0]));
             lines[num_lines - 1][0] = '\0';
             num_lines--;
+            total_lines--;
             
             cursor_y--;
             cursor_x = prev_len;
+            page_modified = 1;
             
             if (scroll_offset > 0 && cursor_y < scroll_offset) {
                 scroll_offset--;
@@ -375,7 +516,7 @@ void delete_char() {
 }
 
 void new_line() {
-    if (num_lines < MAX_LINES - 1) {
+    if (num_lines < LINES_PER_PAGE - 1) {
         memmove(&lines[cursor_y + 2], &lines[cursor_y + 1], 
                 (num_lines - cursor_y - 1) * sizeof(lines[0]));
         
@@ -383,12 +524,17 @@ void new_line() {
         lines[cursor_y][cursor_x] = '\0';
         
         num_lines++;
+        total_lines++;
         cursor_y++;
         cursor_x = 0;
+        page_modified = 1;
         
         if (cursor_y - scroll_offset >= EDIT_HEIGHT) {
             scroll_offset++;
         }
+        
+        // Update page count if needed
+        num_pages = (total_lines + LINES_PER_PAGE - 1) / LINES_PER_PAGE;
     }
 }
 
@@ -563,25 +709,35 @@ void load_directory() {
         int blocks_hi = cbm_k_chrin();
         int blocks = blocks_lo + (blocks_hi << 8);
         
-        // Read file type byte
-        file_type_byte = cbm_k_chrin();
-        file_type = file_type_byte & 0x07;  // Lower 3 bits are file type
+        // Read the entire line into a buffer
+        char full_line[40];
+        int full_line_pos = 0;
+        memset(full_line, 0, 40);
         
-        // Read the rest of the line
+        while (full_line_pos < 39) {
+            c = cbm_k_chrin();
+            if (c == 0) break;  // End of line
+            full_line[full_line_pos++] = c;
+        }
+        full_line[full_line_pos] = '\0';
+        
+        // Parse the line to extract filename
         line_pos = 0;
         in_name = 0;
         memset(line_buf, 0, 40);
         
-        while (1) {
-            c = cbm_k_chrin();
-            if (c == 0) break;  // End of line
-            
-            if (c == '"') {
-                in_name = !in_name;
-            } else if (in_name && line_pos < 16) {
-                line_buf[line_pos++] = c;
+        for (int i = 0; i < full_line_pos && line_pos < 16; i++) {
+            if (full_line[i] == '"') {
+                if (!in_name) {
+                    in_name = 1;  // Start of filename
+                } else {
+                    break;  // End of filename
+                }
+            } else if (in_name) {
+                line_buf[line_pos++] = full_line[i];
             }
         }
+        line_buf[line_pos] = '\0';
         
         // First line is disk name
         if (num_dir_entries == 0 && blocks == 0) {
@@ -590,10 +746,37 @@ void load_directory() {
             continue;
         }
         
-        // Check if this is "BLOCKS FREE" line
-        if (blocks_lo == 255 && blocks_hi == 255) {
+        // Check if this is "BLOCKS FREE" line - empty filename or special blocks value
+        if (line_buf[0] == '\0') {
             blocks_free = blocks;
             break;
+        }
+        
+        // Extract file type from the line (last 3-4 chars usually)
+        file_type = 2;  // Default to PRG
+        file_type_byte = 0x82;  // PRG, closed
+        
+        // Look for file type keywords in the full line
+        if (strstr(full_line, "DEL")) {
+            file_type = 0;
+            file_type_byte = 0x80;
+        } else if (strstr(full_line, "SEQ")) {
+            file_type = 1;
+            file_type_byte = 0x81;
+        } else if (strstr(full_line, "PRG")) {
+            file_type = 2;
+            file_type_byte = 0x82;
+        } else if (strstr(full_line, "USR")) {
+            file_type = 3;
+            file_type_byte = 0x83;
+        } else if (strstr(full_line, "REL")) {
+            file_type = 4;
+            file_type_byte = 0x84;
+        }
+        
+        // Check for locked files (asterisk after type)
+        if (strchr(full_line, '*') != NULL) {
+            file_type_byte |= 0x40;
         }
         
         // Store entry
@@ -712,7 +895,7 @@ void show_directory() {
                 memset(lines, 0, sizeof(lines));
                 cbm_k_chkin(2);
                 
-                while (line < MAX_LINES) {
+                while (line < LINES_PER_PAGE) {
                     ch = cbm_k_chrin();
                     if (cbm_k_readst() & 0x40) break;
                     
@@ -734,9 +917,13 @@ void show_directory() {
                 cbm_k_close(2);
                 
                 num_lines = line > 0 ? line : 1;
+                total_lines = num_lines;
+                num_pages = 1;
+                current_page = 0;
                 cursor_x = 0;
                 cursor_y = 0;
                 scroll_offset = 0;
+                page_modified = 0;
                 
                 // Remember the filename
                 strcpy(current_filename, dir_entries[selected].name);
@@ -761,6 +948,9 @@ void save_file() {
     char msg[40];
     int i, len;
     int overwrite = 0;
+    
+    // Save current page first
+    save_current_page_to_temp();
     
     // Pre-fill with current filename if exists
     if (current_filename[0] != '\0') {
@@ -895,6 +1085,7 @@ void save_file() {
     
     // Remember this filename for next save
     strcpy(current_filename, filename);
+    page_modified = 0;
     
     show_message("SAVED!", COL_GREEN);
 }
@@ -1023,6 +1214,7 @@ void find_and_replace() {
                             line_len - pos - search_len + 1);
                     memcpy(found, replace_term, replace_len);
                     replace_count++;
+                    page_modified = 1;
                 }
             }
         }
