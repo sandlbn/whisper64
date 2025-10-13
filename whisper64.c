@@ -2,7 +2,7 @@
  * Whisper64 for Commodore 64
  * 
  * KEYS: F1=LOAD F2=SAVE F3=DRIVE F5=FIND F6=REPLACE F7=NEXT F8=HELP
- *       CBM+M=MARK CBM+C=COPY CBM+V=PASTE
+ *       CTRL+M=MARK CTRL+C=COPY CTRL+V=PASTE
  * 
  * Compile with LLVM-MOS: cmake --build build
  */
@@ -647,7 +647,7 @@ void renumber_basic() {
     char temp_line[MAX_LINE_LENGTH];
     
     if (!basic_mode) {
-        show_message("NOT IN BASIC MODE - USE CBM+B", COL_RED);
+        show_message("NOT IN BASIC MODE - USE F4", COL_RED);
         return;
     }
     
@@ -715,7 +715,7 @@ void mark_toggle() {
         mark_start_y = cursor_y;
         mark_end_x = cursor_x;
         mark_end_y = cursor_y;
-        show_message("MARK ON - ARROWS, CBM+C=COPY", COL_GREEN);
+        show_message("MARK ON - ARROWS, CTRL+C=COPY", COL_GREEN);
     } else {
         mark_active = 0;
         show_message("MARK OFF", COL_RED);
@@ -729,7 +729,7 @@ void copy_marked() {
     int end_y = mark_start_y < mark_end_y ? mark_end_y : mark_start_y;
     
     if (!mark_active) {
-        show_message("NO MARK - PRESS CBM+M", COL_RED);
+        show_message("NO MARK - PRESS CTRL+M", COL_RED);
         return;
     }
     
@@ -752,7 +752,7 @@ void copy_marked() {
         clipboard_lines++;
     }
     
-    show_message("COPIED - CBM+V TO PASTE", COL_GREEN);
+    show_message("COPIED - CTRL+V TO PASTE", COL_GREEN);
 }
 
 void paste_clipboard() {
@@ -791,9 +791,9 @@ void show_help() {
     cputs_at(2, 10, "F8 - THIS HELP SCREEN", COL_WHITE);
     
     cputs_at(0, 11, "EDITING:", COL_CYAN);
-    cputs_at(2, 12, "CBM+M - TOGGLE MARK MODE", COL_WHITE);
-    cputs_at(2, 13, "CBM+C - COPY MARKED TEXT", COL_WHITE);
-    cputs_at(2, 14, "CBM+V - PASTE TEXT", COL_WHITE);
+    cputs_at(2, 12, "CTRL+M - TOGGLE MARK MODE", COL_WHITE);
+    cputs_at(2, 13, "CTRL+C - COPY MARKED TEXT", COL_WHITE);
+    cputs_at(2, 14, "CTRL+V - PASTE TEXT", COL_WHITE);
     cputs_at(2, 15, "HOME - GO TO TOP", COL_WHITE);
     cputs_at(2, 16, "ARROWS - MOVE CURSOR", COL_WHITE);
     
@@ -1403,7 +1403,7 @@ void find_and_replace() {
 
 int main(void) {
     char c;
-    unsigned char commodore_key;
+    unsigned char control_key;
     
     init_editor();
     update_cursor();
@@ -1413,8 +1413,8 @@ int main(void) {
     while (1) {
         c = cgetc();
         
-        // Check if Commodore key is pressed (bit 7 of location 653)
-        commodore_key = PEEK(653) & 0x80;
+        // Check if Control key is pressed (bit 2 of location 653)
+        control_key = PEEK(653) & 0x04;
         
         // Function keys
         if (c == KEY_F1) {
@@ -1455,12 +1455,12 @@ int main(void) {
         } else if (c == KEY_F8) {
             show_help();
         }
-        // Commodore key combinations
-        else if (commodore_key && (c == 'M' || c == 'm') && cursor_y < num_lines) {
+        // Control key combinations
+        else if (control_key && (c == 'M' || c == 'm') && cursor_y < num_lines) {
             mark_toggle();
-        } else if (commodore_key && (c == 'C' || c == 'c') && cursor_y < num_lines) {
+        } else if (control_key && (c == 'C' || c == 'c') && cursor_y < num_lines) {
             copy_marked();
-        } else if (commodore_key && (c == 'V' || c == 'v') && cursor_y < num_lines) {
+        } else if (control_key && (c == 'V' || c == 'v') && cursor_y < num_lines) {
             paste_clipboard();
         }
         // Navigation and editing
