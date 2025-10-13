@@ -29,6 +29,7 @@
 #define KEY_F1 133
 #define KEY_F2 137
 #define KEY_F3 134
+#define KEY_F4 138  // Shift+F3
 #define KEY_F5 135
 #define KEY_F6 139
 #define KEY_F7 136
@@ -68,6 +69,9 @@ int mark_active = 0;
 int mark_start_x = 0, mark_start_y = 0;
 int mark_end_x = 0, mark_end_y = 0;
 
+// BASIC mode
+int basic_mode = 0;
+
 // Directory browser
 typedef struct {
     char name[17];
@@ -80,7 +84,16 @@ int num_dir_entries = 0;
 char disk_name[17];
 
 // Temporary file for paging
-#define TEMP_FILE "$$WHISPER$$"
+#define TEMP_FILE "$WHISPER$"
+
+// Line number mapping for BASIC renumbering
+typedef struct {
+    int old_num;
+    int new_num;
+} LineMapping;
+
+LineMapping line_mappings[MAX_LINES];
+int num_mappings = 0;
 
 // Colors
 #define COL_WHITE 1
@@ -267,6 +280,7 @@ void init_editor() {
     clipboard_lines = 0;
     current_filename[0] = '\0';
     page_modified = 0;
+    basic_mode = 0;
     
     POKE(0xD020, 0);
     POKE(0xD021, 0);
@@ -390,8 +404,16 @@ void redraw_screen() {
     sprintf(pos_info, " %d:%d", global_line, cursor_x + 1);
     cputs_at(8, 0, pos_info, COL_GREEN);
     
+    // BASIC mode indicator
+    int next_x = 17;
+    if (basic_mode) {
+        cputs_at(next_x, 0, "[BAS]", COL_PURPLE);
+        next_x += 5;
+    }
+    
     if (mark_active) {
-        cputs_at(17, 0, "[M]", COL_GREEN);
+        cputs_at(next_x, 0, "[M]", COL_GREEN);
+        next_x += 3;
     }
     
     // Drive info
@@ -406,7 +428,7 @@ void redraw_screen() {
         cputs_at(22, 0, page_info, COL_CYAN);
     }
     
-    for (i = (mark_active ? 20 : 16); i < (num_pages > 1 ? 22 : 30); i++) {
+    for (i = next_x; i < (num_pages > 1 ? 22 : 30); i++) {
         cputc_at(i, 0, ' ', COL_YELLOW);
     }
     
@@ -449,6 +471,11 @@ void show_message(const char *msg, unsigned char col) {
         cputc_at(i, 24, ' ', col);
     }
     cputs_at(0, 24, msg, col);
+    
+    // Add mode indicator at the end if in BASIC mode
+    if (basic_mode) {
+        cputs_at(32, 24, "[BASIC]", COL_PURPLE);
+    }
 }
 
 void insert_char(char c) {
@@ -538,6 +565,148 @@ void new_line() {
     }
 }
 
+// BASIC renumbering functions
+int extract_line_number(const char *line) {
+    int num = 0;
+    int i = 0;
+    
+    // Skip leading spaces
+    while (line[i] == ' ') i++;
+    
+    // Check if line starts with a number
+    if (!isdigit(line[i])) return -1;
+    
+    // Extract the number
+    while (isdigit(line[i])) {
+        num = num * 10 + (line[i] - '0');
+        i++;
+    }
+    
+    // Must be followed by space or end
+    if (line[i] != ' ' && line[i] != '\0') return -1;
+    
+    return num;
+}
+
+void replace_line_number(char *line, int old_num, int new_num) {
+    char temp[MAX_LINE_LENGTH];
+    char *pos;
+    char search[10];
+    char replace[10];
+    int line_len, search_len, replace_len;
+    
+    sprintf(search, "%d", old_num);
+    sprintf(replace, "%d", new_num);
+    search_len = strlen(search);
+    replace_len = strlen(replace);
+    
+    // Look for GOTO, GOSUB, THEN, ELSE followed by the line number
+    const char *keywords[] = {"GOTO ", "GOSUB ", "GO TO ", "GO SUB ", "THEN ", "THEN", "ELSE ", "ELSE", NULL};
+    
+    for (int k = 0; keywords[k] != NULL; k++) {
+        pos = line;
+        while ((pos = strstr(pos, keywords[k])) != NULL) {
+            // Move past the keyword
+            pos += strlen(keywords[k]);
+            
+            // Skip spaces after keyword
+            while (*pos == ' ') pos++;
+            
+            // Check if this is our number
+            if (strncmp(pos, search, search_len) == 0) {
+                // Make sure it's followed by a delimiter
+                char next_char = pos[search_len];
+                if (next_char == ' ' || next_char == ':' || next_char == '\0' || next_char == ',') {
+                    // Build replacement string
+                    line_len = strlen(line);
+                    int pos_offset = pos - line;
+                    
+                    if (line_len - search_len + replace_len < MAX_LINE_LENGTH) {
+                        // Save the part after the number
+                        strcpy(temp, pos + search_len);
+                        
+                        // Insert new number
+                        strcpy(pos, replace);
+                        
+                        // Append the rest
+                        strcpy(pos + replace_len, temp);
+                        
+                        // Continue searching from after the replacement
+                        pos += replace_len;
+                        page_modified = 1;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void renumber_basic() {
+    int i, j;
+    int old_line_num, new_line_num;
+    char temp_line[MAX_LINE_LENGTH];
+    
+    if (!basic_mode) {
+        show_message("NOT IN BASIC MODE - USE CBM+B", COL_RED);
+        return;
+    }
+    
+    show_message("RENUMBERING...", COL_YELLOW);
+    
+    // Step 1: Build mapping of old line numbers to new ones
+    num_mappings = 0;
+    new_line_num = 10;
+    
+    for (i = 0; i < num_lines; i++) {
+        old_line_num = extract_line_number(lines[i]);
+        if (old_line_num >= 0) {
+            line_mappings[num_mappings].old_num = old_line_num;
+            line_mappings[num_mappings].new_num = new_line_num;
+            num_mappings++;
+            new_line_num += 10;
+        }
+    }
+    
+    if (num_mappings == 0) {
+        show_message("NO BASIC LINE NUMBERS FOUND", COL_RED);
+        return;
+    }
+    
+    // Step 2: Renumber the lines themselves
+    for (i = 0; i < num_lines; i++) {
+        old_line_num = extract_line_number(lines[i]);
+        if (old_line_num >= 0) {
+            // Find the new number for this line
+            for (j = 0; j < num_mappings; j++) {
+                if (line_mappings[j].old_num == old_line_num) {
+                    // Find where the line number ends
+                    int pos = 0;
+                    while (isdigit(lines[i][pos])) pos++;
+                    
+                    // Build new line with new number
+                    sprintf(temp_line, "%d%s", line_mappings[j].new_num, &lines[i][pos]);
+                    strcpy(lines[i], temp_line);
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Step 3: Update all GOTO/GOSUB/THEN/ELSE references
+    for (i = 0; i < num_lines; i++) {
+        for (j = 0; j < num_mappings; j++) {
+            replace_line_number(lines[i], line_mappings[j].old_num, line_mappings[j].new_num);
+        }
+    }
+    
+    page_modified = 1;
+    update_cursor();
+    
+    char msg[40];
+    sprintf(msg, "RENUMBERED %d LINES", num_mappings);
+    show_message(msg, COL_GREEN);
+}
+
 // Copy/Paste functions
 void mark_toggle() {
     if (!mark_active) {
@@ -615,10 +784,11 @@ void show_help() {
     cputs_at(2, 3, "F1 - LOAD FILE (DIRECTORY)", COL_WHITE);
     cputs_at(2, 4, "F2 - SAVE FILE", COL_WHITE);
     cputs_at(2, 5, "F3 - SELECT DRIVE (8-15)", COL_WHITE);
-    cputs_at(2, 6, "F5 - FIND TEXT", COL_WHITE);
-    cputs_at(2, 7, "F6 - FIND & REPLACE", COL_WHITE);
-    cputs_at(2, 8, "F7 - FIND NEXT", COL_WHITE);
-    cputs_at(2, 9, "F8 - THIS HELP SCREEN", COL_WHITE);
+    cputs_at(2, 6, "F4 - BASIC MODE & RENUMBER", COL_WHITE);
+    cputs_at(2, 7, "F5 - FIND TEXT", COL_WHITE);
+    cputs_at(2, 8, "F6 - FIND & REPLACE", COL_WHITE);
+    cputs_at(2, 9, "F7 - FIND NEXT", COL_WHITE);
+    cputs_at(2, 10, "F8 - THIS HELP SCREEN", COL_WHITE);
     
     cputs_at(0, 11, "EDITING:", COL_CYAN);
     cputs_at(2, 12, "CBM+M - TOGGLE MARK MODE", COL_WHITE);
@@ -627,10 +797,10 @@ void show_help() {
     cputs_at(2, 15, "HOME - GO TO TOP", COL_WHITE);
     cputs_at(2, 16, "ARROWS - MOVE CURSOR", COL_WHITE);
     
-    cputs_at(0, 18, "FEATURES:", COL_CYAN);
-    cputs_at(2, 19, "- BASIC KEYWORD HIGHLIGHTING", COL_WHITE);
-    cputs_at(2, 20, "- LINE NUMBERS", COL_WHITE);
-    cputs_at(2, 21, "- MULTI-DRIVE SUPPORT", COL_WHITE);
+    cputs_at(0, 18, "BASIC MODE (F4):", COL_CYAN);
+    cputs_at(2, 19, "PRESS F4 TO TOGGLE BASIC MODE", COL_WHITE);
+    cputs_at(2, 20, "PRESS F4 AGAIN TO RENUMBER", COL_WHITE);
+    cputs_at(2, 21, "UPDATES GOTO/GOSUB/THEN/ELSE", COL_WHITE);
     
     cputs_at(0, 23, "PRESS ANY KEY TO CONTINUE", COL_GREEN);
     
@@ -1238,7 +1408,7 @@ int main(void) {
     init_editor();
     update_cursor();
     
-    show_message("F1=LOAD F2=SAVE F3=DRIVE F8=HELP", COL_CYAN);
+    show_message("F1=LOAD F2=SAVE F4=BASIC F8=HELP", COL_CYAN);
     
     while (1) {
         c = cgetc();
@@ -1254,6 +1424,24 @@ int main(void) {
             update_cursor();
         } else if (c == KEY_F3) {
             select_drive();
+        } else if (c == KEY_F4) {
+            // BASIC mode toggle and renumber
+            if (!basic_mode) {
+                basic_mode = 1;
+                update_cursor();
+                show_message("BASIC MODE ON - F4 AGAIN=RENUMBER", COL_GREEN);
+            } else {
+                // Already in BASIC mode, ask to renumber
+                show_message("RENUMBER? (Y/N)", COL_YELLOW);
+                char response = cgetc();
+                if (response == 'Y' || response == 'y') {
+                    renumber_basic();
+                } else {
+                    basic_mode = 0;
+                    update_cursor();
+                    show_message("BASIC MODE OFF", COL_RED);
+                }
+            }
         } else if (c == KEY_F5) {
             search_text();
         } else if (c == KEY_F6) {
