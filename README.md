@@ -47,7 +47,7 @@ RUN
 | **F6** | Find & replace (with replace all option) |
 | **F7** | Find next occurrence |
 | **F8** | Help screen |
-| **CTRL+M** | Toggle mark mode for selection |
+| **CTRL+K** | Toggle mark mode for selection |
 | **CTRL+C** | Copy marked text (up to 8 lines) |
 | **CTRL+V** | Paste copied text |
 | **HOME** | Go to top of file |

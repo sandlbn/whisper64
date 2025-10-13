@@ -2,7 +2,7 @@
  * Whisper64 for Commodore 64
  * 
  * KEYS: F1=LOAD F2=SAVE F3=DRIVE F5=FIND F6=REPLACE F7=NEXT F8=HELP
- *       CTRL+M=MARK CTRL+C=COPY CTRL+V=PASTE
+ *       CTRL+K=MARK CTRL+C=COPY CTRL+V=PASTE
  * 
  * Compile with LLVM-MOS: cmake --build build
  */
@@ -729,7 +729,7 @@ void copy_marked() {
     int end_y = mark_start_y < mark_end_y ? mark_end_y : mark_start_y;
     
     if (!mark_active) {
-        show_message("NO MARK - PRESS CTRL+M", COL_RED);
+        show_message("NO MARK - PRESS CTRL+K", COL_RED);
         return;
     }
     
@@ -791,7 +791,7 @@ void show_help() {
     cputs_at(2, 10, "F8 - THIS HELP SCREEN", COL_WHITE);
     
     cputs_at(0, 11, "EDITING:", COL_CYAN);
-    cputs_at(2, 12, "CTRL+M - TOGGLE MARK MODE", COL_WHITE);
+    cputs_at(2, 12, "CTRL+K - TOGGLE MARK MODE", COL_WHITE);
     cputs_at(2, 13, "CTRL+C - COPY MARKED TEXT", COL_WHITE);
     cputs_at(2, 14, "CTRL+V - PASTE TEXT", COL_WHITE);
     cputs_at(2, 15, "HOME - GO TO TOP", COL_WHITE);
@@ -1403,7 +1403,6 @@ void find_and_replace() {
 
 int main(void) {
     char c;
-    unsigned char control_key;
     
     init_editor();
     update_cursor();
@@ -1412,9 +1411,6 @@ int main(void) {
     
     while (1) {
         c = cgetc();
-        
-        // Check if Control key is pressed (bit 2 of location 653)
-        control_key = PEEK(653) & 0x04;
         
         // Function keys
         if (c == KEY_F1) {
@@ -1456,11 +1452,11 @@ int main(void) {
             show_help();
         }
         // Control key combinations
-        else if (control_key && (c == 'M' || c == 'm') && cursor_y < num_lines) {
+        else if (c == 11) {  // Control+K for mark
             mark_toggle();
-        } else if (control_key && (c == 'C' || c == 'c') && cursor_y < num_lines) {
+        } else if (c == 3 && cursor_y < num_lines) {  // Control+C for copy
             copy_marked();
-        } else if (control_key && (c == 'V' || c == 'v') && cursor_y < num_lines) {
+        } else if (c == 22 && cursor_y < num_lines) {  // Control+V for paste
             paste_clipboard();
         }
         // Navigation and editing
