@@ -10,6 +10,8 @@ A feature-rich text editor for the Commodore 64.
 - **Directory Browser**: Multi-drive support (8-15) with file type display
 - **Search & Replace**: Find text with wrap-around and replace all
 - **Copy/Paste**: Visual mark mode for selecting and copying text
+- **Undo/Redo**: One-level undo and redo for text editing operations
+- **Goto Line**: Jump directly to any line number in your file
 - **Status Bar**: Shows filename, cursor position, drive, page, and mode indicators
 - **37×23 editing area** with line numbers
 
@@ -50,6 +52,9 @@ RUN
 | **CTRL+K** | Toggle mark mode for selection |
 | **CTRL+C** | Copy marked text (up to 8 lines) |
 | **CTRL+V** | Paste copied text |
+| **CTRL+G** | Jump directly to any line number |
+| **CTRL+Z** | Undo the last change |
+| **CTRL+Y** | Redo the last undone change |
 | **HOME** | Go to top of file |
 | **Arrows** | Move cursor (updates mark selection when active) |
 
@@ -109,5 +114,11 @@ You can copy up to 8 lines at once. The copied text remains in the clipboard unt
 4. Choose:
    - **Y** to replace all occurrences at once
    - **N** to manually replace each occurrence
+
+**Goto Line**
+1. Press CTRL+G
+2. Type the line number (1-64)
+3. Press RETURN
+
 ## License
 Free to use and modify.

@@ -19,13 +19,15 @@ void show_help() {
     cputs_at(2, 12, "CTRL+K - TOGGLE MARK MODE", COL_WHITE);
     cputs_at(2, 13, "CTRL+C - COPY MARKED TEXT", COL_WHITE);
     cputs_at(2, 14, "CTRL+V - PASTE TEXT", COL_WHITE);
-    cputs_at(2, 15, "HOME - GO TO TOP", COL_WHITE);
-    cputs_at(2, 16, "ARROWS - MOVE CURSOR", COL_WHITE);
+    cputs_at(2, 15, "CTRL+Z - UNDO LAST CHANGE", COL_WHITE);
+    cputs_at(2, 16, "CTRL+Y - REDO LAST CHANGE", COL_WHITE);
+    cputs_at(2, 17, "CTRL+G - GOTO LINE NUMBER", COL_WHITE);
+    cputs_at(2, 18, "HOME - GO TO TOP", COL_WHITE);
+    cputs_at(2, 19, "ARROWS - MOVE CURSOR", COL_WHITE);
     
-    cputs_at(0, 18, "BASIC MODE (F4):", COL_CYAN);
-    cputs_at(2, 19, "PRESS F4 TO TOGGLE BASIC MODE", COL_WHITE);
-    cputs_at(2, 20, "PRESS F4 AGAIN TO RENUMBER", COL_WHITE);
-    cputs_at(2, 21, "UPDATES GOTO/GOSUB/THEN/ELSE", COL_WHITE);
+    cputs_at(0, 20, "BASIC MODE (F4):", COL_CYAN);
+    cputs_at(2, 21, "PRESS F4 TO TOGGLE BASIC MODE", COL_WHITE);
+    cputs_at(2, 22, "PRESS F4 AGAIN TO RENUMBER", COL_WHITE);
     
     cputs_at(0, 23, "PRESS ANY KEY TO CONTINUE", COL_GREEN);
     

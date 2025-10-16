@@ -16,6 +16,8 @@
 #include "clipboard.h"
 #include "basic.h"
 #include "help.h"
+#include "undo.h"
+#include "goto.h"
 
 int main(void) {
     char c;
@@ -74,12 +76,20 @@ int main(void) {
             copy_marked();
         } else if (c == 22 && cursor_y < num_lines) {  // Control+V for paste
             paste_clipboard();
+        } else if (c == 26) {  // Control+Z for undo
+            undo_last_action();
+        } else if (c == 25) {  // Control+Y for redo
+            redo_last_action();
+        } else if (c == 7) {  // Control+G for goto line
+            goto_line();
         }
         // Navigation and editing
         else if (c == KEY_RETURN) {
+            save_undo_state();
             new_line();
             update_cursor();
         } else if (c == KEY_DELETE) {
+            save_undo_state();
             delete_char();
             update_cursor();
         } else if (c == KEY_LEFT) {
@@ -150,6 +160,7 @@ int main(void) {
         }
         // Regular typing
         else if (c >= 32 && c < 128) {
+            save_undo_state();
             insert_char(c);
             update_cursor();
         }
