@@ -24,6 +24,8 @@ set(SOURCES
     src/clipboard.c
     src/basic.c
     src/help.c
+    src/undo.c
+    src/goto.c
 )
 
 # Add the executable with all source files
