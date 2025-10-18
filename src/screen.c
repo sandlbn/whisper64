@@ -206,8 +206,18 @@ void draw_cursor() {
 }
 
 void update_cursor() {
+    // Hide mouse cursor before redrawing screen
+    if (mouse_is_enabled()) {
+        mouse_hide_cursor();
+    }
+    
     redraw_screen();
     draw_cursor();
+    
+    // Restore mouse cursor after redrawing
+    if (mouse_is_enabled()) {
+        mouse_draw_cursor();
+    }
 }
 
 void show_message(const char *msg, unsigned char col) {
