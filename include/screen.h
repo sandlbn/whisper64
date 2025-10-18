@@ -3,6 +3,11 @@
 
 #include "whisper64.h"
 
+// Forward declare mouse functions to avoid circular dependency
+unsigned char mouse_is_enabled(void);
+void mouse_hide_cursor(void);
+void mouse_draw_cursor(void);
+
 // Basic screen functions
 void clrscr(void);
 char cgetc(void);

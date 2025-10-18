@@ -26,6 +26,7 @@ set(SOURCES
     src/help.c
     src/undo.c
     src/goto.c
+    src/mouse.c
 )
 
 # Add the executable with all source files

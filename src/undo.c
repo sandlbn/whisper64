@@ -2,8 +2,8 @@
 #include "editor_state.h"
 #include "screen.h"
 
-// Undo state storage - 3 lines (maybe on C128)
-#define UNDO_LINES 3
+// Undo state storage - 1 lines (maybe on C128)
+#define UNDO_LINES 2
 
 static char undo_lines[UNDO_LINES][MAX_LINE_LENGTH];
 static int undo_num_lines = 0;

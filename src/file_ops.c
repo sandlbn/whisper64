@@ -2,6 +2,7 @@
 #include "editor_state.h"
 #include "editor.h"
 #include "screen.h"
+#include "mouse.h"
 
 void select_drive() {
     char msg[40];
