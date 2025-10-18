@@ -12,6 +12,7 @@ A feature-rich text editor for the Commodore 64.
 - **Copy/Paste**: Visual mark mode for selecting and copying text
 - **Undo/Redo**: One-level undo and redo for text editing operations
 - **Goto Line**: Jump directly to any line number in your file
+- **Mouse Support**: Experimental support for Commodore 1351 mouse (click to position cursor)
 - **Status Bar**: Shows filename, cursor position, drive, page, and mode indicators
 - **37×23 editing area** with line numbers
 
@@ -49,14 +50,60 @@ RUN
 | **F6** | Find & replace (with replace all option) |
 | **F7** | Find next occurrence |
 | **F8** | Help screen |
-| **CTRL+K** | Toggle mark mode for selection |
 | **CTRL+C** | Copy marked text (up to 8 lines) |
-| **CTRL+V** | Paste copied text |
 | **CTRL+G** | Jump directly to any line number |
-| **CTRL+Z** | Undo the last change |
+| **CTRL+J** | Toggle mouse on/off (experimental) |
+| **CTRL+K** | Toggle mark mode for selection |
+| **CTRL+V** | Paste copied text |
 | **CTRL+Y** | Redo the last undone change |
+| **CTRL+Z** | Undo the last change |
 | **HOME** | Go to top of file |
 | **Arrows** | Move cursor (updates mark selection when active) |
+
+## Keyboard Shortcuts Reference
+
+### File Operations
+- **F1** → Load file (directory browser)
+- **F2** → Save file
+
+### Editing
+- **CTRL+C** → Copy marked text
+- **CTRL+V** → Paste text
+- **CTRL+Z** → Undo
+- **CTRL+Y** → Redo
+- **CTRL+K** → Toggle mark mode
+- **CTRL+G** → Goto line
+
+### Search
+- **F5** → Find text
+- **F6** → Find & replace
+- **F7** → Find next
+
+### Navigation
+- **HOME** → Jump to top of file
+- **Arrow Keys** → Move cursor
+
+### Other
+- **CTRL+J** → Toggle mouse support (experimental)
+- **F3** → Select drive (8-15)
+- **F4** → BASIC mode / Renumber
+- **F8** → Help screen
+
+## Mouse Support (Experimental)
+
+Whisper64 includes experimental support for the **Commodore 1351 mouse** on **Control Port 1** (left port).
+
+**To use the mouse:**
+1. Connect your 1351 mouse to Control Port 1
+2. Press **CTRL+J** to enable mouse mode
+3. Move the mouse to position the cursor (shown as yellow `^`)
+4. Click the left button to position the text cursor
+5. Press **CTRL+J** again to disable mouse mode
+
+**Notes:**
+- Mouse cursor is only shown when mouse mode is active
+- Clicking in the edit area (lines 1-23) positions the text cursor
+- Mouse sensitivity can be adjusted in `mouse.c` (`MOUSE_DIVISOR` constant)
 
 ## BASIC Mode
 
@@ -90,12 +137,12 @@ The top status bar displays:
 ## Copy/Paste Operations
 
 To copy and paste text:
-1. Press **CTRL+M** to enter mark mode
+1. Press **CTRL+K** to enter mark mode
 2. Use arrow keys to select text (selection shown in yellow)
 3. Press **CTRL+C** to copy the selected text
 4. Move cursor to destination
 5. Press **CTRL+V** to paste
-6. Press **CTRL+M** again to exit mark mode
+6. Press **CTRL+K** again to exit mark mode
 
 You can copy up to 8 lines at once. The copied text remains in the clipboard until you copy something new.
 
@@ -115,8 +162,8 @@ You can copy up to 8 lines at once. The copied text remains in the clipboard unt
    - **Y** to replace all occurrences at once
    - **N** to manually replace each occurrence
 
-**Goto Line**
-1. Press CTRL+G
+## Goto Line
+1. Press **CTRL+G**
 2. Type the line number (1-64)
 3. Press RETURN
 
