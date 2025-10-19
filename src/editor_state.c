@@ -19,8 +19,8 @@ char replace_term[40];
 int search_line = 0;
 int search_pos = 0;
 
-// Copy/Paste state
-char clipboard[8][MAX_LINE_LENGTH];
+// Copy/Paste state - REDUCED to 3 lines
+char clipboard[3][MAX_LINE_LENGTH];
 int clipboard_lines = 0;
 int mark_active = 0;
 int mark_start_x = 0, mark_start_y = 0;

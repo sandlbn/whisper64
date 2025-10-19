@@ -30,7 +30,8 @@ void copy_marked() {
     
     clipboard_lines = 0;
     
-    for (i = start_y; i <= end_y && clipboard_lines < 8; i++) {
+    // Copy up to 3 lines (reduced from 8)
+    for (i = start_y; i <= end_y && clipboard_lines < 3; i++) {
         if (start_y == end_y) {
             int start_x = mark_start_x < mark_end_x ? mark_start_x : mark_end_x;
             int end_x = mark_start_x < mark_end_x ? mark_end_x : mark_start_x;

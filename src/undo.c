@@ -1,130 +1,111 @@
 #include "undo.h"
 #include "editor_state.h"
 #include "screen.h"
+#include "reu.h"
 
-// Undo state storage - 1 lines (maybe on C128)
-#define UNDO_LINES 2
+// Undo state storage - 0 lines to save RAM (REU handles storage)
+#define UNDO_LINES 0
 
-static char undo_lines[UNDO_LINES][MAX_LINE_LENGTH];
-static int undo_num_lines = 0;
-static int undo_cursor_x = 0;
-static int undo_cursor_y = 0;
-static int undo_scroll_offset = 0;
-static int undo_start_line = 0;
+// Non-REU mode disabled to save RAM
+// All undo/redo now requires REU
 static int undo_available = 0;
-
-// Redo state storage
-static char redo_lines[UNDO_LINES][MAX_LINE_LENGTH];
-static int redo_num_lines = 0;
-static int redo_cursor_x = 0;
-static int redo_cursor_y = 0;
-static int redo_scroll_offset = 0;
-static int redo_start_line = 0;
 static int redo_available = 0;
 
+// REU-based multi-level undo
+static int reu_undo_head = 0;
+static int reu_undo_count = 0;
+static int reu_redo_head = 0;
+static int reu_redo_count = 0;
+
 void save_undo_state(void) {
-    int i;
-    int lines_to_save;
-    
-    // Only save current line and one line before/after
-    int start_line = cursor_y > 0 ? cursor_y - 1 : 0;
-    int end_line = start_line + UNDO_LINES;
-    if (end_line > num_lines) {
-        end_line = num_lines;
-        start_line = end_line - UNDO_LINES;
-        if (start_line < 0) start_line = 0;
+    if (!reu_available) {
+        // No undo without REU to save RAM
+        return;
     }
     
-    lines_to_save = end_line - start_line;
+    // REU mode: Save to circular buffer
+    reu_save_undo_state(reu_undo_head);
     
-    // Copy relevant lines to undo buffer
-    for (i = 0; i < lines_to_save && i < UNDO_LINES; i++) {
-        strcpy(undo_lines[i], lines[start_line + i]);
+    // Move head forward
+    reu_undo_head = (reu_undo_head + 1) % REU_MAX_UNDO;
+    
+    // Increase count up to max
+    if (reu_undo_count < REU_MAX_UNDO) {
+        reu_undo_count++;
     }
-    
-    undo_num_lines = num_lines;
-    undo_cursor_x = cursor_x;
-    undo_cursor_y = cursor_y;
-    undo_scroll_offset = scroll_offset;
-    undo_start_line = start_line;
-    undo_available = 1;
     
     // Clear redo when new action happens
-    redo_available = 0;
+    reu_redo_count = 0;
 }
 
 void undo_last_action(void) {
-    int i;
+    if (!reu_available) {
+        show_message("UNDO REQUIRES REU", COL_RED);
+        return;
+    }
     
-    if (!undo_available) {
+    // REU mode: Multi-level undo
+    if (reu_undo_count == 0) {
         show_message("NOTHING TO UNDO", COL_RED);
         return;
     }
     
-    // Calculate which lines to save for redo
-    int start_line = cursor_y > 0 ? cursor_y - 1 : 0;
-    int end_line = start_line + UNDO_LINES;
-    if (end_line > num_lines) {
-        end_line = num_lines;
-        start_line = end_line - UNDO_LINES;
-        if (start_line < 0) start_line = 0;
+    // Save current state to redo before undo
+    reu_save_undo_state(REU_MAX_UNDO + reu_redo_head);
+    reu_redo_head = (reu_redo_head + 1) % REU_MAX_UNDO;
+    if (reu_redo_count < REU_MAX_UNDO) {
+        reu_redo_count++;
     }
     
-    int lines_to_save = end_line - start_line;
-    
-    // Save current state to redo buffer
-    for (i = 0; i < lines_to_save && i < UNDO_LINES; i++) {
-        strcpy(redo_lines[i], lines[start_line + i]);
-    }
-    redo_num_lines = num_lines;
-    redo_cursor_x = cursor_x;
-    redo_cursor_y = cursor_y;
-    redo_scroll_offset = scroll_offset;
-    redo_start_line = start_line;
-    redo_available = 1;
+    // Move back in undo history
+    reu_undo_head = (reu_undo_head - 1 + REU_MAX_UNDO) % REU_MAX_UNDO;
+    reu_undo_count--;
     
     // Restore from undo buffer
-    for (i = 0; i < UNDO_LINES && undo_start_line + i < num_lines; i++) {
-        strcpy(lines[undo_start_line + i], undo_lines[i]);
-    }
-    
-    num_lines = undo_num_lines;
-    cursor_x = undo_cursor_x;
-    cursor_y = undo_cursor_y;
-    scroll_offset = undo_scroll_offset;
+    reu_load_undo_state(reu_undo_head);
     
     page_modified = 1;
     update_cursor();
-    show_message("UNDONE", COL_GREEN);
+    
+    char msg[40];
+    sprintf(msg, "UNDO (%d LEFT)", reu_undo_count);
+    show_message(msg, COL_GREEN);
 }
 
 void redo_last_action(void) {
-    int i;
+    if (!reu_available) {
+        show_message("REDO REQUIRES REU", COL_RED);
+        return;
+    }
     
-    if (!redo_available) {
+    // REU mode: Multi-level redo
+    if (reu_redo_count == 0) {
         show_message("NOTHING TO REDO", COL_RED);
         return;
     }
     
-    // Restore from redo buffer
-    for (i = 0; i < UNDO_LINES && redo_start_line + i < num_lines; i++) {
-        strcpy(lines[redo_start_line + i], redo_lines[i]);
-    }
+    reu_redo_head = (reu_redo_head - 1 + REU_MAX_UNDO) % REU_MAX_UNDO;
+    reu_redo_count--;
     
-    num_lines = redo_num_lines;
-    cursor_x = redo_cursor_x;
-    cursor_y = redo_cursor_y;
-    scroll_offset = redo_scroll_offset;
+    reu_load_undo_state(REU_MAX_UNDO + reu_redo_head);
+    
+    reu_undo_head = (reu_undo_head + 1) % REU_MAX_UNDO;
+    if (reu_undo_count < REU_MAX_UNDO) {
+        reu_undo_count++;
+    }
     
     page_modified = 1;
     update_cursor();
-    show_message("REDONE", COL_GREEN);
+    
+    char msg[40];
+    sprintf(msg, "REDO (%d LEFT)", reu_redo_count);
+    show_message(msg, COL_GREEN);
 }
 
 int can_undo(void) {
-    return undo_available;
+    return reu_available && (reu_undo_count > 0);
 }
 
 int can_redo(void) {
-    return redo_available;
+    return reu_available && (reu_redo_count > 0);
 }

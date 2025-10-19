@@ -22,8 +22,8 @@ extern char replace_term[40];
 extern int search_line;
 extern int search_pos;
 
-// Copy/Paste state
-extern char clipboard[8][MAX_LINE_LENGTH];
+// Copy/Paste state - REDUCED from 8 to 3 lines to save RAM
+extern char clipboard[3][MAX_LINE_LENGTH];
 extern int clipboard_lines;
 extern int mark_active;
 extern int mark_start_x, mark_start_y;

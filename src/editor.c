@@ -1,8 +1,13 @@
 #include "editor.h"
 #include "editor_state.h"
 #include "screen.h"
+#include "reu.h"
+
 
 void save_current_page_to_temp() {
+    // DISABLED: REU paging causes screen corruption
+    // Use disk-based paging only for now
+    
     char temp_name[20];
     int i, len;
     
@@ -35,12 +40,20 @@ void save_current_page_to_temp() {
 }
 
 void load_page(int page_num) {
-    char temp_name[20];
-    int i, pos;
-    unsigned char ch;
-    
     if (page_num == current_page) return;
     
+    if (reu_available) {
+        // Save current page to REU
+        reu_save_page(current_page, (const char (*)[MAX_LINE_LENGTH])lines, num_lines);
+        page_modified = 0;
+        
+        // Load requested page from REU
+        current_page = page_num;
+        reu_load_page(page_num, lines, &num_lines);
+        return;
+    }
+    
+    // Fall back to disk-based paging
     save_current_page_to_temp();
     
     current_page = page_num;
@@ -51,18 +64,19 @@ void load_page(int page_num) {
         return;
     }
     
+    char temp_name[20];
     sprintf(temp_name, "%s.P%d", TEMP_FILE, page_num);
     
     cbm_k_setlfs(2, current_drive, 2);
     cbm_k_setnam(temp_name);
     
     if (cbm_k_open() == 0) {
-        i = 0;
-        pos = 0;
+        int i = 0;
+        int pos = 0;
         cbm_k_chkin(2);
         
         while (i < LINES_PER_PAGE) {
-            ch = cbm_k_chrin();
+            unsigned char ch = cbm_k_chrin();
             if (cbm_k_readst() & 0x40) break;
             
             if (ch == '\r' || ch == '\n') {
@@ -89,7 +103,10 @@ void load_page(int page_num) {
 }
 
 void check_page_boundary() {
-    if (cursor_y >= LINES_PER_PAGE && current_page < num_pages - 1) {
+    int max_pages = reu_available ? reu_max_pages : 
+                    (MAX_LINES / LINES_PER_PAGE);
+    
+    if (cursor_y >= LINES_PER_PAGE && current_page < max_pages - 1) {
         load_page(current_page + 1);
         cursor_y = 0;
         scroll_offset = 0;
@@ -103,7 +120,12 @@ void check_page_boundary() {
 }
 
 void init_editor() {
+    // Initialize screen FIRST
+    POKE(0xD020, 0);
+    POKE(0xD021, 0);
     clrscr();
+    
+    // Initialize editor state
     memset(lines, 0, sizeof(lines));
     num_lines = 1;
     total_lines = 1;
@@ -120,8 +142,12 @@ void init_editor() {
     page_modified = 0;
     basic_mode = 0;
     
-    POKE(0xD020, 0);
-    POKE(0xD021, 0);
+    // Draw initial screen BEFORE REU detection
+    redraw_screen();
+    draw_cursor();
+    
+    // Now detect REU (may show message)
+    reu_init();
 }
 
 void insert_char(char c) {
@@ -137,7 +163,11 @@ void insert_char(char c) {
         page_modified = 1;
         
         if (cursor_x >= EDIT_WIDTH) {
-            if (num_lines < LINES_PER_PAGE - 1) {
+            int max_pages = reu_available ? reu_max_pages : 
+                           (MAX_LINES / LINES_PER_PAGE);
+            
+            if (num_lines < LINES_PER_PAGE - 1 || 
+                (reu_available && current_page < max_pages - 1)) {
                 memmove(&lines[cursor_y + 2], &lines[cursor_y + 1], 
                         (num_lines - cursor_y - 1) * sizeof(lines[0]));
                 
@@ -189,7 +219,11 @@ void delete_char() {
 }
 
 void new_line() {
-    if (num_lines < LINES_PER_PAGE - 1) {
+    int max_pages = reu_available ? reu_max_pages : 
+                    (MAX_LINES / LINES_PER_PAGE);
+    
+    if (num_lines < LINES_PER_PAGE - 1 || 
+        (reu_available && current_page < max_pages - 1)) {
         memmove(&lines[cursor_y + 2], &lines[cursor_y + 1], 
                 (num_lines - cursor_y - 1) * sizeof(lines[0]));
         

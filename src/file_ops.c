@@ -50,7 +50,7 @@ void load_directory() {
     cbm_k_setnam("$");
     
     if (cbm_k_open() != 0) {
-        show_message("DIR ERROR", COL_RED);
+        show_message("DIR ERROR - CANNOT OPEN", COL_RED);
         return;
     }
     
@@ -76,6 +76,7 @@ void load_directory() {
         
         while (full_line_pos < 39) {
             c = cbm_k_chrin();
+            if (cbm_k_readst() & 0x40) break;
             if (c == 0) break;
             full_line[full_line_pos++] = c;
         }
@@ -231,13 +232,31 @@ void show_directory() {
             if (cbm_k_open() == 0) {
                 int line = 0, pos = 0;
                 unsigned char ch;
+                unsigned char st;
                 
                 memset(lines, 0, sizeof(lines));
                 cbm_k_chkin(2);
                 
                 while (line < LINES_PER_PAGE) {
-                    ch = cbm_k_chrin();
-                    if (cbm_k_readst() & 0x40) break;
+                    st = cbm_k_readst();
+                    if (st != 0) break;
+                    
+                    ch = cbm_k_basin();
+                    
+                    st = cbm_k_readst();
+                    if (st & 0xBF) {
+                        if (!(st & 0x02)) {
+                            if (ch == '\r' || ch == '\n') {
+                                lines[line][pos] = '\0';
+                                line++;
+                            } else if (pos < MAX_LINE_LENGTH - 1) {
+                                lines[line][pos++] = ch;
+                                lines[line][pos] = '\0';
+                                line++;
+                            }
+                        }
+                        break;
+                    }
                     
                     if (ch == '\r' || ch == '\n') {
                         lines[line][pos] = '\0';
@@ -248,15 +267,15 @@ void show_directory() {
                     }
                 }
                 
-                if (pos > 0 || line == 0) {
-                    lines[line][pos] = '\0';
-                    line++;
-                }
-                
                 cbm_k_clrch();
                 cbm_k_close(2);
                 
-                num_lines = line > 0 ? line : 1;
+                if (line == 0) {
+                    lines[0][0] = '\0';
+                    line = 1;
+                }
+                
+                num_lines = line;
                 total_lines = num_lines;
                 num_pages = 1;
                 current_page = 0;
@@ -271,7 +290,7 @@ void show_directory() {
                 show_message("LOADED!", COL_GREEN);
                 return;
             } else {
-                show_message("ERROR LOADING", COL_RED);
+                show_message("ERROR LOADING FILE", COL_RED);
             }
         } else if (c == 3) {
             update_cursor();

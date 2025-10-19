@@ -1,5 +1,6 @@
 #include "screen.h"
 #include "editor_state.h"
+#include "reu.h"
 
 void clrscr() {
     int i;
@@ -165,6 +166,11 @@ void redraw_screen() {
         next_x += 3;
     }
     
+    if (reu_available) {
+        cputs_at(next_x, 0, "[REU]", COL_CYAN);
+        next_x += 5;
+    }
+    
     char drive_info[10];
     sprintf(drive_info, " D:%d", current_drive);
     cputs_at(30, 0, drive_info, COL_CYAN);
@@ -206,7 +212,6 @@ void draw_cursor() {
 }
 
 void update_cursor() {
-    // Hide mouse cursor before redrawing screen
     if (mouse_is_enabled()) {
         mouse_hide_cursor();
     }
@@ -214,7 +219,6 @@ void update_cursor() {
     redraw_screen();
     draw_cursor();
     
-    // Restore mouse cursor after redrawing
     if (mouse_is_enabled()) {
         mouse_draw_cursor();
     }
@@ -229,5 +233,10 @@ void show_message(const char *msg, unsigned char col) {
     
     if (basic_mode) {
         cputs_at(32, 24, "[BASIC]", COL_PURPLE);
+    }
+    
+    if (reu_available) {
+        int x = basic_mode ? 24 : 32;
+        cputs_at(x, 24, "[REU]", COL_CYAN);
     }
 }
