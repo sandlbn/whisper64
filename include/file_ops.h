@@ -5,6 +5,7 @@
 
 // File operations
 void save_file(void);
+void new_file(void);
 
 // Directory operations
 void load_directory(void);

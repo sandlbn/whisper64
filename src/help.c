@@ -22,14 +22,11 @@ void show_help() {
     cputs_at(2, 15, "CTRL+Z - UNDO LAST CHANGE", COL_WHITE);
     cputs_at(2, 16, "CTRL+Y - REDO LAST CHANGE", COL_WHITE);
     cputs_at(2, 17, "CTRL+G - GOTO LINE NUMBER", COL_WHITE);
+    cputs_at(2, 17, "CTRL+W - NEW FILE", COL_WHITE);
     cputs_at(2, 18, "HOME - GO TO TOP", COL_WHITE);
     cputs_at(2, 19, "ARROWS - MOVE CURSOR", COL_WHITE);
     
-    cputs_at(0, 20, "BASIC MODE (F4):", COL_CYAN);
-    cputs_at(2, 21, "PRESS F4 TO TOGGLE BASIC MODE", COL_WHITE);
-    cputs_at(2, 22, "PRESS F4 AGAIN TO RENUMBER", COL_WHITE);
-    
-    cputs_at(0, 23, "PRESS ANY KEY TO CONTINUE", COL_GREEN);
+    cputs_at(0, 20, "BASIC MODE (F4)", COL_CYAN);    
     
     cgetc();
     update_cursor();

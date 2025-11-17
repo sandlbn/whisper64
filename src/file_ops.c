@@ -4,8 +4,7 @@
 #include "screen.h"
 #include "mouse.h"
 
-// Compact extension table to save memory
-// Format: "EXTT" where EXT is 3-char extension, T is type (S=SEQ, P=PRG)
+// Compact extension table
 static const char ext_table[] = 
     "C  S" "H  S" "TXTS" "BASS" "ASMS" "S  S" "INCS" 
     "CFGS" "MD S" "DOCS" "LOGS" "INIS" "XMLS" "JSNS"
@@ -410,14 +409,10 @@ void save_file() {
     
     show_message("SAVING...", COL_YELLOW);
     
-    //  @0: prefix with ,S,W for ALL files
-    // The @0: should tell DOS to save/replace with exact filename
-    
     if (overwrite) {
-        // @0: to replace existing file with exact name
+        // Use @0: to replace existing file with exact name
         sprintf(full_filename, "@0:%s,S,W", filename);
     } else {
-        // For new files, use @0: to preserve extension
         sprintf(full_filename, "@0:%s,S,W", filename);
     }
     
@@ -477,4 +472,52 @@ void save_file() {
         page_modified = 0;
         show_message("SAVED!", COL_GREEN);
     }
+}
+
+void new_file() {
+    char msg[40];
+    // Ask for confirmation if current buffer has unsaved changes
+    if (page_modified || num_lines > 1 || strlen(lines[0]) > 0) {
+        show_message("CLEAR BUFFER? (Y/N)", COL_YELLOW);
+        char c = cgetc();
+        if (c != 'Y' && c != 'y') {
+            show_message("CANCELLED", COL_RED);
+            update_cursor();
+            return;
+        }
+    }
+    
+    // Clear the buffer
+    memset(lines, 0, sizeof(lines));
+    num_lines = 1;
+    total_lines = 1;
+    current_page = 0;
+    num_pages = 1;
+    cursor_x = 0;
+    cursor_y = 0;
+    scroll_offset = 0;
+    page_modified = 0;
+    current_filename[0] = '\0';
+    
+    // Clear search/replace
+    search_term[0] = '\0';
+    replace_term[0] = '\0';
+    search_line = 0;
+    search_pos = 0;
+    
+    // Clear clipboard and marks
+    clipboard_lines = 0;
+    mark_active = 0;
+    
+    // Delete any temp files from previous session
+    for (int i = 0; i < 10; i++) {
+        sprintf(msg, "@0:%s.P%d", TEMP_FILE, i);
+        cbm_k_setnam(msg);
+        cbm_k_setlfs(15, current_drive, 15);
+        cbm_k_open();
+        cbm_k_close(15);
+    }
+    
+    show_message("NEW FILE READY", COL_GREEN);
+    update_cursor();
 }
