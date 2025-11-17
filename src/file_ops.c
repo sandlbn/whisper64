@@ -338,7 +338,7 @@ void show_directory() {
 
 void save_file() {
     char filename[20];
-    char full_filename[25];
+    char full_filename[30];
     char msg[40];
     int i, len;
     int overwrite = 0;
@@ -391,10 +391,12 @@ void save_file() {
         strcpy(filename, current_filename);
     }
     
-    cbm_k_setlfs(15, current_drive, 0);
-    cbm_k_setnam(filename);
+    // Check if file exists - try to open for read
+    cbm_k_setlfs(2, current_drive, 0);
+    sprintf(full_filename, "%s,S,R", filename);  // Try to open as SEQ for read
+    cbm_k_setnam(full_filename);
     if (cbm_k_open() == 0) {
-        cbm_k_close(15);
+        cbm_k_close(2);
         
         show_message("FILE EXISTS! OVERWRITE? (Y/N)", COL_YELLOW);
         char response = cgetc();
@@ -408,24 +410,16 @@ void save_file() {
     
     show_message("SAVING...", COL_YELLOW);
     
+    //  @0: prefix with ,S,W for ALL files
+    // The @0: should tell DOS to save/replace with exact filename
+    
     if (overwrite) {
-        cbm_k_setlfs(15, current_drive, 15);
-        sprintf(full_filename, "S0:%s", filename);
-        cbm_k_setnam(full_filename);
-        if (cbm_k_open() == 0) {
-            cbm_k_close(15);
-        }
+        // @0: to replace existing file with exact name
+        sprintf(full_filename, "@0:%s,S,W", filename);
+    } else {
+        // For new files, use @0: to preserve extension
+        sprintf(full_filename, "@0:%s,S,W", filename);
     }
-    
-    // Determine file type based on extension
-    char ext_type = check_ext_type(filename);
-    char file_type_char = 'S'; // Default SEQ
-    
-    if (ext_type == 'P') file_type_char = 'P';
-    else if (ext_type == 'U') file_type_char = 'U';
-    else if (ext_type == 'R') file_type_char = 'R';
-    
-    sprintf(full_filename, "%s,%c,W", filename, file_type_char);
     
     cbm_k_setlfs(2, current_drive, 2);
     cbm_k_setnam(full_filename);
@@ -437,6 +431,7 @@ void save_file() {
     
     cbm_k_chkout(2);
     
+    // Write file contents
     for (i = 0; i < num_lines; i++) {
         len = strlen(lines[i]);
         for (int j = 0; j < len; j++) {
@@ -450,6 +445,7 @@ void save_file() {
     cbm_k_clrch();
     cbm_k_close(2);
     
+    // Check error channel
     cbm_k_setlfs(15, current_drive, 15);
     cbm_k_setnam("");
     if (cbm_k_open() == 0) {
@@ -466,14 +462,19 @@ void save_file() {
         cbm_k_clrch();
         cbm_k_close(15);
         
-        if (status[0] != '0' || status[1] != '0') {
+        // Check for success
+        // 00 = OK
+        // 01 = files scratched (OK for overwrite)  
+        if (status[0] == '0' && (status[1] == '0' || status[1] == '1')) {
+            strcpy(current_filename, filename);
+            page_modified = 0;
+            show_message("SAVED!", COL_GREEN);
+        } else {
             show_message(status, COL_RED);
-            return;
         }
+    } else {
+        strcpy(current_filename, filename);
+        page_modified = 0;
+        show_message("SAVED!", COL_GREEN);
     }
-    
-    strcpy(current_filename, filename);
-    page_modified = 0;
-    
-    show_message("SAVED!", COL_GREEN);
 }
