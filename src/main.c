@@ -149,6 +149,8 @@ int main(void) {
             redo_last_action();
         } else if (c == 7) {  // Control+G for goto line
             goto_line();
+        } else if (c == 23) {  // Control+W new file
+            new_file();
         }
         // Navigation and editing
         else if (c == KEY_RETURN) {

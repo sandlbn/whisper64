@@ -23,7 +23,7 @@ extern int search_line;
 extern int search_pos;
 
 // Copy/Paste state
-extern char clipboard[8][MAX_LINE_LENGTH];
+extern char clipboard[4][MAX_LINE_LENGTH];
 extern int clipboard_lines;
 extern int mark_active;
 extern int mark_start_x, mark_start_y;

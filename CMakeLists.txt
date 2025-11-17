@@ -33,7 +33,9 @@ set(SOURCES
 add_executable(whisper64.prg ${SOURCES})
 
 # Optimization flags for size 
-target_compile_options(whisper64.prg PRIVATE -Os)
+target_compile_options(whisper64.prg PRIVATE -Os -ffunction-sections)
+
+target_link_options(whisper64.prg PRIVATE -Wl,--gc-sections -Wl,-s -Wl,-Map=whisper64.map)
 
 # Optional: Add custom target to show project structure
 add_custom_target(show_structure

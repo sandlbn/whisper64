@@ -4,6 +4,50 @@
 #include "screen.h"
 #include "mouse.h"
 
+// Compact extension table
+static const char ext_table[] = 
+    "C  S" "H  S" "TXTS" "BASS" "ASMS" "S  S" "INCS" 
+    "CFGS" "MD S" "DOCS" "LOGS" "INIS" "XMLS" "JSNS"
+    "CSVS" "DATS" "PRGP" "BINP" "A65S" "CC S" "CPPS"
+    "SEQS" "USRU" "RELR" "DELD" "\0";
+
+// Optimized extension checking - uses much less memory
+static char check_ext_type(const char* filename) {
+    int len = strlen(filename);
+    if (len < 2) return 'P'; // Default PRG
+    
+    // Find last dot
+    const char* ext = NULL;
+    for (int i = len - 1; i >= 0; i--) {
+        if (filename[i] == '.') {
+            ext = &filename[i + 1];
+            break;
+        }
+    }
+    
+    if (!ext) return 'P'; // No extension = PRG
+    
+    // Convert first 3 chars of extension to uppercase
+    char ext_up[4];
+    int i;
+    for (i = 0; i < 3 && ext[i]; i++) {
+        ext_up[i] = (ext[i] >= 'a' && ext[i] <= 'z') ? ext[i] - 32 : ext[i];
+    }
+    while (i < 3) ext_up[i++] = ' '; // Pad with spaces
+    ext_up[3] = '\0';
+    
+    // Search in compact table
+    const char* p = ext_table;
+    while (*p) {
+        if (p[0] == ext_up[0] && p[1] == ext_up[1] && p[2] == ext_up[2]) {
+            return p[3]; // Return type character
+        }
+        p += 4; // Move to next entry
+    }
+    
+    return 'P'; // Default PRG for unknown
+}
+
 void select_drive() {
     char msg[40];
     char c;
@@ -34,12 +78,10 @@ void select_drive() {
 
 void load_directory() {
     unsigned char c;
-    int blocks_free = 0;
     char line_buf[40];
     int line_pos = 0;
     int in_name = 0;
     unsigned char file_type_byte;
-    int file_type;
     
     num_dir_entries = 0;
     disk_name[0] = '\0';
@@ -105,28 +147,44 @@ void load_directory() {
         }
         
         if (line_buf[0] == '\0') {
-            blocks_free = blocks;
             break;
         }
         
-        file_type = 2;
+        // Determine file type - check native CBM types first
+        const char* type_str = "PRG";
         file_type_byte = 0x82;
         
         if (strstr(full_line, "DEL")) {
-            file_type = 0;
+            type_str = "DEL";
             file_type_byte = 0x80;
         } else if (strstr(full_line, "SEQ")) {
-            file_type = 1;
+            type_str = "SEQ";
             file_type_byte = 0x81;
         } else if (strstr(full_line, "PRG")) {
-            file_type = 2;
+            type_str = "PRG";
             file_type_byte = 0x82;
         } else if (strstr(full_line, "USR")) {
-            file_type = 3;
+            type_str = "USR";
             file_type_byte = 0x83;
         } else if (strstr(full_line, "REL")) {
-            file_type = 4;
+            type_str = "REL";
             file_type_byte = 0x84;
+        } else {
+            // Check extension for file type
+            char ext_type = check_ext_type(line_buf);
+            if (ext_type == 'S') {
+                type_str = "SEQ";
+                file_type_byte = 0x81;
+            } else if (ext_type == 'U') {
+                type_str = "USR";
+                file_type_byte = 0x83;
+            } else if (ext_type == 'R') {
+                type_str = "REL";
+                file_type_byte = 0x84;
+            } else if (ext_type == 'D') {
+                type_str = "DEL";
+                file_type_byte = 0x80;
+            }
         }
         
         if (strchr(full_line, '*') != NULL) {
@@ -136,15 +194,7 @@ void load_directory() {
         strncpy(dir_entries[num_dir_entries].name, line_buf, 16);
         dir_entries[num_dir_entries].name[16] = '\0';
         dir_entries[num_dir_entries].blocks = blocks;
-        
-        switch(file_type) {
-            case 0: strcpy(dir_entries[num_dir_entries].type, "DEL"); break;
-            case 1: strcpy(dir_entries[num_dir_entries].type, "SEQ"); break;
-            case 2: strcpy(dir_entries[num_dir_entries].type, "PRG"); break;
-            case 3: strcpy(dir_entries[num_dir_entries].type, "USR"); break;
-            case 4: strcpy(dir_entries[num_dir_entries].type, "REL"); break;
-            default: strcpy(dir_entries[num_dir_entries].type, "???"); break;
-        }
+        strcpy(dir_entries[num_dir_entries].type, type_str);
         
         if (file_type_byte & 0x40) {
             strcat(dir_entries[num_dir_entries].type, "*");
@@ -225,7 +275,11 @@ void show_directory() {
         } else if (c == KEY_RETURN) {
             show_message("LOADING...", COL_YELLOW);
             
-            cbm_k_setlfs(2, current_drive, 2);
+            // Check file type for loading mode
+            char ext_type = check_ext_type(dir_entries[selected].name);
+            int file_mode = (ext_type == 'S') ? 2 : 0; // SEQ files use mode 2
+            
+            cbm_k_setlfs(2, current_drive, file_mode);
             cbm_k_setnam(dir_entries[selected].name);
             
             if (cbm_k_open() == 0) {
@@ -283,7 +337,7 @@ void show_directory() {
 
 void save_file() {
     char filename[20];
-    char full_filename[25];
+    char full_filename[30];
     char msg[40];
     int i, len;
     int overwrite = 0;
@@ -336,10 +390,12 @@ void save_file() {
         strcpy(filename, current_filename);
     }
     
-    cbm_k_setlfs(15, current_drive, 0);
-    cbm_k_setnam(filename);
+    // Check if file exists - try to open for read
+    cbm_k_setlfs(2, current_drive, 0);
+    sprintf(full_filename, "%s,S,R", filename);  // Try to open as SEQ for read
+    cbm_k_setnam(full_filename);
     if (cbm_k_open() == 0) {
-        cbm_k_close(15);
+        cbm_k_close(2);
         
         show_message("FILE EXISTS! OVERWRITE? (Y/N)", COL_YELLOW);
         char response = cgetc();
@@ -354,15 +410,11 @@ void save_file() {
     show_message("SAVING...", COL_YELLOW);
     
     if (overwrite) {
-        cbm_k_setlfs(15, current_drive, 15);
-        sprintf(full_filename, "S0:%s", filename);
-        cbm_k_setnam(full_filename);
-        if (cbm_k_open() == 0) {
-            cbm_k_close(15);
-        }
+        // Use @0: to replace existing file with exact name
+        sprintf(full_filename, "@0:%s,S,W", filename);
+    } else {
+        sprintf(full_filename, "@0:%s,S,W", filename);
     }
-    
-    sprintf(full_filename, "%s,S,W", filename);
     
     cbm_k_setlfs(2, current_drive, 2);
     cbm_k_setnam(full_filename);
@@ -374,6 +426,7 @@ void save_file() {
     
     cbm_k_chkout(2);
     
+    // Write file contents
     for (i = 0; i < num_lines; i++) {
         len = strlen(lines[i]);
         for (int j = 0; j < len; j++) {
@@ -387,6 +440,7 @@ void save_file() {
     cbm_k_clrch();
     cbm_k_close(2);
     
+    // Check error channel
     cbm_k_setlfs(15, current_drive, 15);
     cbm_k_setnam("");
     if (cbm_k_open() == 0) {
@@ -403,14 +457,67 @@ void save_file() {
         cbm_k_clrch();
         cbm_k_close(15);
         
-        if (status[0] != '0' || status[1] != '0') {
+        // Check for success
+        // 00 = OK
+        // 01 = files scratched (OK for overwrite)  
+        if (status[0] == '0' && (status[1] == '0' || status[1] == '1')) {
+            strcpy(current_filename, filename);
+            page_modified = 0;
+            show_message("SAVED!", COL_GREEN);
+        } else {
             show_message(status, COL_RED);
+        }
+    } else {
+        strcpy(current_filename, filename);
+        page_modified = 0;
+        show_message("SAVED!", COL_GREEN);
+    }
+}
+
+void new_file() {
+    char msg[40];
+    // Ask for confirmation if current buffer has unsaved changes
+    if (page_modified || num_lines > 1 || strlen(lines[0]) > 0) {
+        show_message("CLEAR BUFFER? (Y/N)", COL_YELLOW);
+        char c = cgetc();
+        if (c != 'Y' && c != 'y') {
+            show_message("CANCELLED", COL_RED);
+            update_cursor();
             return;
         }
     }
     
-    strcpy(current_filename, filename);
+    // Clear the buffer
+    memset(lines, 0, sizeof(lines));
+    num_lines = 1;
+    total_lines = 1;
+    current_page = 0;
+    num_pages = 1;
+    cursor_x = 0;
+    cursor_y = 0;
+    scroll_offset = 0;
     page_modified = 0;
+    current_filename[0] = '\0';
     
-    show_message("SAVED!", COL_GREEN);
+    // Clear search/replace
+    search_term[0] = '\0';
+    replace_term[0] = '\0';
+    search_line = 0;
+    search_pos = 0;
+    
+    // Clear clipboard and marks
+    clipboard_lines = 0;
+    mark_active = 0;
+    
+    // Delete any temp files from previous session
+    for (int i = 0; i < 10; i++) {
+        sprintf(msg, "@0:%s.P%d", TEMP_FILE, i);
+        cbm_k_setnam(msg);
+        cbm_k_setlfs(15, current_drive, 15);
+        cbm_k_open();
+        cbm_k_close(15);
+    }
+    
+    show_message("NEW FILE READY", COL_GREEN);
+    update_cursor();
 }
