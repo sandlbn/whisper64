@@ -19,6 +19,7 @@
 #include "undo.h"
 #include "goto.h"
 #include "mouse.h"
+#include "reu.h"
 
 int main(void) {
     char c;
@@ -26,8 +27,16 @@ int main(void) {
     unsigned char clicked_line, clicked_col;
     
     init_editor();
+    reu_init();
     mouse_init();
     update_cursor();
+
+    if (reu_is_available()) {
+    char msg[40];
+    sprintf(msg, "REU DETECTED: %luKB", reu_get_size() / 1024);
+    show_message(msg, COL_GREEN);
+    cgetc();  // Wait for keypress
+}
     
     show_message("F1=LOAD F2=SAVE F4=BASIC CTRL+J=MOUSE", COL_CYAN);
     

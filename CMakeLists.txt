@@ -19,6 +19,7 @@ set(SOURCES
     src/editor_state.c
     src/screen.c
     src/editor.c
+    src/reu.c
     src/file_ops.c
     src/search.c
     src/clipboard.c
