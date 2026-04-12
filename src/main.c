@@ -32,11 +32,11 @@ int main(void) {
     update_cursor();
 
     if (reu_is_available()) {
-    char msg[40];
-    sprintf(msg, "REU DETECTED: %luKB", reu_get_size() / 1024);
-    show_message(msg, COL_GREEN);
-    cgetc();  // Wait for keypress
-}
+        char msg[40];
+        sprintf(msg, "REU: %luKB  MAX %d PAGES", reu_get_size() / 1024, reu_max_page_count());
+        show_message(msg, COL_GREEN);
+        cgetc();
+    }
     
     show_message("F1=LOAD F2=SAVE F4=BASIC CTRL+J=MOUSE", COL_CYAN);
     

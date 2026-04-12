@@ -4,6 +4,8 @@
 #include <string.h>
 
 static uint8_t reu_available = 0;
+static uint32_t reu_size = 0;
+static int reu_max_pages = 0;
 
 // Page header structure stored in REU
 typedef struct {
@@ -53,6 +55,13 @@ void reu_init(void) {
     reu_available = reu_detect();
     if (reu_available) {
         REU_REGS.control = 0;
+        REU_REGS.reu_bank = 0;
+        reu_size = reu_get_size();
+        if (reu_size > 0) {
+            reu_max_pages = (reu_size - REU_DATA_OFFSET) / REU_PAGE_SIZE;
+        } else {
+            reu_max_pages = 0;
+        }
     }
 }
 
@@ -82,11 +91,25 @@ void reu_write(REUPtr reu_addr, void* c64_addr, uint16_t size) {
     REU_REGS.command = REU_CMD_STASH;  // DMA happens here - CPU halted
 }
 
+int reu_max_page_count(void) {
+    return reu_max_pages;
+}
+
+void reu_clear_pages(void) {
+    static uint16_t zero = 0;
+    int i;
+    if (!reu_available) return;
+    for (i = 0; i < reu_max_pages && i < 64; i++) {
+        reu_write(reu_page_addr(i), &zero, sizeof(zero));
+    }
+}
+
 void reu_save_page(int page_num) {
     REUPtr addr;
     REUPageHeader header;
 
     if (!reu_available) return;
+    if (page_num >= reu_max_pages) return;
 
     addr = reu_page_addr(page_num);
 
@@ -103,6 +126,7 @@ int reu_load_page(int page_num) {
     REUPageHeader header;
 
     if (!reu_available) return 0;
+    if (page_num >= reu_max_pages) return 0;
 
     addr = reu_page_addr(page_num);
 

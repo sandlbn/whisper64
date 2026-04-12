@@ -59,11 +59,13 @@ uint8_t reu_detect(void);
 void reu_init(void);
 uint8_t reu_is_available(void);
 uint32_t reu_get_size(void);
+int reu_max_page_count(void);
 
 void reu_read(REUPtr reu_addr, void* c64_addr, uint16_t size);
 void reu_write(REUPtr reu_addr, void* c64_addr, uint16_t size);
 
 void reu_save_page(int page_num);
 int reu_load_page(int page_num);
+void reu_clear_pages(void);
 
 #endif

@@ -45,7 +45,7 @@ extern int num_mappings;
 typedef struct {
     char name[17];
     unsigned int blocks; 
-    char type[4]; 
+    char type[5];
 } DirEntry;
 
 extern DirEntry dir_entries[MAX_DIR_ENTRIES];

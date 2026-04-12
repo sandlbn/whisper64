@@ -625,6 +625,9 @@ void new_file() {
     clipboard_lines = 0;
     mark_active = 0;
     
+    // Invalidate REU pages so stale data can't bleed into new file
+    reu_clear_pages();
+
     // Delete any temp files from previous session
     for (int i = 0; i < 10; i++) {
         sprintf(msg, "@0:%s.P%d", TEMP_FILE, i);
