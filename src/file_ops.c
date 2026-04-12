@@ -3,6 +3,7 @@
 #include "editor.h"
 #include "screen.h"
 #include "mouse.h"
+#include "reu.h"
 
 // Compact extension table
 static const char ext_table[] = 
@@ -274,55 +275,107 @@ void show_directory() {
             if (selected >= scroll_pos + 18) scroll_pos = selected - 17;
         } else if (c == KEY_RETURN) {
             show_message("LOADING...", COL_YELLOW);
-            
-            // Check file type for loading mode
-            char ext_type = check_ext_type(dir_entries[selected].name);
-            int file_mode = (ext_type == 'S') ? 2 : 0; // SEQ files use mode 2
-            
-            cbm_k_setlfs(2, current_drive, file_mode);
-            cbm_k_setnam(dir_entries[selected].name);
+
+            // Determine how to open based on the CBM file type from directory
+            char load_name[30];
+            if (strcmp(dir_entries[selected].type, "SEQ") == 0) {
+                sprintf(load_name, "%s,S,R", dir_entries[selected].name);
+            } else {
+                // For PRG and other types, also open as data channel
+                sprintf(load_name, "%s,P,R", dir_entries[selected].name);
+            }
+
+            cbm_k_setlfs(2, current_drive, 2);
+            cbm_k_setnam(load_name);
             
             if (cbm_k_open() == 0) {
                 int line = 0, pos = 0;
+                int page = 0;
+                int total = 0;
                 unsigned char ch;
-                
+                unsigned char eof = 0;
+
                 memset(lines, 0, sizeof(lines));
                 cbm_k_chkin(2);
-                
-                while (line < LINES_PER_PAGE) {
+
+                while (!eof) {
                     ch = cbm_k_chrin();
-                    if (cbm_k_readst() & 0x40) break;
-                    
+                    if (cbm_k_readst() & 0x40) {
+                        eof = 1;
+                        // Save final partial line
+                        if (pos > 0 || line == 0) {
+                            lines[line][pos] = '\0';
+                            line++;
+                        }
+                        break;
+                    }
+
                     if (ch == '\r' || ch == '\n') {
                         lines[line][pos] = '\0';
                         line++;
+                        total++;
                         pos = 0;
+
+                        // Page full - save to REU/temp and start next page
+                        if (line >= LINES_PER_PAGE) {
+                            num_lines = line;
+                            current_page = page;
+                            page_modified = 1;
+                            if (reu_is_available()) {
+                                reu_save_page(page);
+                            } else {
+                                save_current_page_to_temp();
+                            }
+                            page++;
+                            line = 0;
+                            pos = 0;
+                            memset(lines, 0, sizeof(lines));
+                        }
                     } else if (pos < MAX_LINE_LENGTH - 1) {
                         lines[line][pos++] = ch;
                     }
                 }
-                
-                if (pos > 0 || line == 0) {
-                    lines[line][pos] = '\0';
-                    line++;
-                }
-                
+
                 cbm_k_clrch();
                 cbm_k_close(2);
-                
+
+                // Final page stays in lines buffer
                 num_lines = line > 0 ? line : 1;
-                total_lines = num_lines;
-                num_pages = 1;
+                total += num_lines;
+                num_pages = page + 1;
                 current_page = 0;
+                total_lines = total;
                 cursor_x = 0;
                 cursor_y = 0;
                 scroll_offset = 0;
                 page_modified = 0;
-                
+
+                // If multi-page, save the last page and load page 0
+                if (num_pages > 1) {
+                    // Save the last page we just read
+                    current_page = page;
+                    page_modified = 1;
+                    if (reu_is_available()) {
+                        reu_save_page(page);
+                    } else {
+                        save_current_page_to_temp();
+                    }
+                    // Load page 0 for display
+                    memset(lines, 0, sizeof(lines));
+                    current_page = 0;
+                    if (reu_is_available()) {
+                        int loaded = reu_load_page(0);
+                        if (loaded > 0) num_lines = loaded;
+                    }
+                    page_modified = 0;
+                }
+
                 strcpy(current_filename, dir_entries[selected].name);
-                
+
                 update_cursor();
-                show_message("LOADED!", COL_GREEN);
+                char lmsg[40];
+                sprintf(lmsg, "LOADED %d LINES %d PAGES", total_lines, num_pages);
+                show_message(lmsg, COL_GREEN);
                 return;
             } else {
                 show_message("ERROR LOADING", COL_RED);
@@ -391,52 +444,115 @@ void save_file() {
     }
     
     // Check if file exists - try to open for read
-    cbm_k_setlfs(2, current_drive, 0);
-    sprintf(full_filename, "%s,S,R", filename);  // Try to open as SEQ for read
+    cbm_k_setlfs(2, current_drive, 2);
+    sprintf(full_filename, "%s,S,R", filename);
     cbm_k_setnam(full_filename);
     if (cbm_k_open() == 0) {
+        cbm_k_clrch();
         cbm_k_close(2);
-        
+
         show_message("FILE EXISTS! OVERWRITE? (Y/N)", COL_YELLOW);
         char response = cgetc();
-        
+
         if (response != 'Y' && response != 'y') {
             show_message("SAVE CANCELLED", COL_RED);
             return;
         }
         overwrite = 1;
+    } else {
+        // Clear any pending drive error from failed open
+        cbm_k_close(2);
     }
     
     show_message("SAVING...", COL_YELLOW);
-    
-    if (overwrite) {
-        // Use @0: to replace existing file with exact name
-        sprintf(full_filename, "@0:%s,S,W", filename);
-    } else {
-        sprintf(full_filename, "@0:%s,S,W", filename);
-    }
-    
+
+    sprintf(full_filename, "@0:%s,S,W", filename);
+
     cbm_k_setlfs(2, current_drive, 2);
     cbm_k_setnam(full_filename);
-    
+
     if (cbm_k_open() != 0) {
         show_message("SAVE ERROR - OPEN FAIL", COL_RED);
         return;
     }
-    
+
     cbm_k_chkout(2);
-    
-    // Write file contents
-    for (i = 0; i < num_lines; i++) {
-        len = strlen(lines[i]);
-        for (int j = 0; j < len; j++) {
-            cbm_k_chrout(lines[i][j]);
+
+    // Write all pages to file
+    if (num_pages > 1) {
+        int saved_page = current_page;
+        int first_line_written = 0;
+
+        // Current page was saved to REU/temp by save_current_page_to_temp above
+        for (int p = 0; p < num_pages; p++) {
+            int page_lines;
+
+            // Load each page from REU/temp into lines buffer
+            memset(lines, 0, sizeof(lines));
+            if (reu_is_available()) {
+                page_lines = reu_load_page(p);
+                if (page_lines <= 0) page_lines = 1;
+            } else {
+                char temp_name[20];
+                sprintf(temp_name, "%s.P%d,S,R", TEMP_FILE, p);
+                cbm_k_setlfs(3, current_drive, 2);
+                cbm_k_setnam(temp_name);
+                page_lines = 1;
+                if (cbm_k_open() == 0) {
+                    int li = 0, po = 0;
+                    unsigned char ch;
+                    cbm_k_chkin(3);
+                    while (li < LINES_PER_PAGE) {
+                        ch = cbm_k_chrin();
+                        if (cbm_k_readst() & 0x40) break;
+                        if (ch == '\r' || ch == '\n') {
+                            lines[li][po] = '\0';
+                            li++; po = 0;
+                        } else if (po < MAX_LINE_LENGTH - 1) {
+                            lines[li][po++] = ch;
+                        }
+                    }
+                    if (po > 0) { lines[li][po] = '\0'; li++; }
+                    cbm_k_clrch();
+                    cbm_k_close(3);
+                    if (li > 0) page_lines = li;
+                }
+            }
+
+            // Write this page's lines to the output file
+            cbm_k_chkout(2);
+            for (i = 0; i < page_lines; i++) {
+                if (first_line_written) {
+                    cbm_k_chrout(13);
+                }
+                len = strlen(lines[i]);
+                for (int j = 0; j < len; j++) {
+                    cbm_k_chrout(lines[i][j]);
+                }
+                first_line_written = 1;
+            }
         }
-        if (i < num_lines - 1) {
-            cbm_k_chrout(13);
+
+        // Restore the page the user was on
+        memset(lines, 0, sizeof(lines));
+        if (reu_is_available()) {
+            int loaded = reu_load_page(saved_page);
+            if (loaded > 0) num_lines = loaded;
+        }
+        current_page = saved_page;
+    } else {
+        // Single page - write directly from current lines buffer
+        for (i = 0; i < num_lines; i++) {
+            len = strlen(lines[i]);
+            for (int j = 0; j < len; j++) {
+                cbm_k_chrout(lines[i][j]);
+            }
+            if (i < num_lines - 1) {
+                cbm_k_chrout(13);
+            }
         }
     }
-    
+
     cbm_k_clrch();
     cbm_k_close(2);
     

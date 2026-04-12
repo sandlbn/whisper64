@@ -3,107 +3,56 @@
 #include "screen.h"
 #include <string.h>
 
-// REU state
 static uint8_t reu_available = 0;
-static uint32_t reu_size = 0;
 
-// Page metadata stored at start of each REU page
+// Page header structure stored in REU
 typedef struct {
-    uint16_t num_lines;
-    uint16_t checksum;
+    uint16_t magic;
+    uint16_t num_lines_stored;
 } REUPageHeader;
 
-// Calculate base address for a page in REU
+#define REU_PAGE_SIZE (sizeof(REUPageHeader) + LINES_PER_PAGE * MAX_LINE_LENGTH)
+
+// First 256 bytes of REU reserved for future use
+#define REU_DATA_OFFSET 256
+
+// Compiler memory barrier - tells the compiler that memory may have changed
+// due to DMA. Without this, the compiler can optimize away reads/writes
+// that the REU DMA depends on.
+#define DMA_BARRIER() __asm__ volatile("" ::: "memory")
+
 static REUPtr reu_page_addr(int page_num) {
-    // Skip first 256 bytes for signature/metadata
-    return 256 + ((REUPtr)page_num * (REU_PAGE_SIZE + sizeof(REUPageHeader)));
+    return REU_DATA_OFFSET + ((REUPtr)page_num * REU_PAGE_SIZE);
 }
 
 uint8_t reu_detect(void) {
-    volatile uint8_t test_val;
-    volatile uint8_t orig_val;
-    
-    // Save original value
-    orig_val = reu.reu_base;
-    
-    // Try to write and read back a test pattern
-    reu.reu_base = 0xAA;
-    test_val = reu.reu_base;
-    
-    if (test_val != 0xAA) {
-        reu.reu_base = orig_val;
-        return 0;
-    }
-    
-    reu.reu_base = 0x55;
-    test_val = reu.reu_base;
-    
-    if (test_val != 0x55) {
-        reu.reu_base = orig_val;
-        return 0;
-    }
-    
-    // Restore and confirm REU is present
-    reu.reu_base = orig_val;
-    return 1;
-}
+    volatile uint8_t orig, test;
 
-uint32_t reu_get_size(void) {
-    // Test REU size by writing/reading at different bank boundaries
-    // Common sizes: 128KB, 256KB, 512KB, 1MB, 2MB, 16MB
-    static uint8_t test_byte;
-    static uint8_t read_byte;
-    uint32_t size = 0;
-    uint8_t bank;
-    
-    if (!reu_available) return 0;
-    
-    test_byte = 0xA5;
-    
-    // Test each 64KB bank
-    for (bank = 0; bank < 255; bank++) {
-        // Write test pattern to start of bank
-        reu.c64_base = (uint16_t)&test_byte;
-        reu.reu_base = 0;
-        reu.reu_base_bank = bank;
-        reu.length = 1;
-        reu.control = 0;
-        reu.command = REU_CMD_STASH;
-        
-        // Change test byte
-        test_byte = 0x5A;
-        
-        // Read it back
-        reu.c64_base = (uint16_t)&read_byte;
-        reu.reu_base = 0;
-        reu.reu_base_bank = bank;
-        reu.length = 1;
-        reu.command = REU_CMD_FETCH;
-        
-        // Restore test byte
-        test_byte = 0xA5;
-        
-        // Check if we read back what we wrote
-        if (read_byte != 0xA5) {
-            break;
-        }
-        
-        size = ((uint32_t)(bank + 1)) << 16;  // 64KB per bank
+    // Save original value of REU base low register
+    orig = REU_REGS.reu_base_lo;
+
+    // Write test pattern 0xAA
+    REU_REGS.reu_base_lo = 0xAA;
+    test = REU_REGS.reu_base_lo;
+    if (test != 0xAA) {
+        REU_REGS.reu_base_lo = orig;
+        return 0;
     }
-    
-    return size;
+
+    // Write complementary pattern 0x55
+    REU_REGS.reu_base_lo = 0x55;
+    test = REU_REGS.reu_base_lo;
+
+    // Restore original
+    REU_REGS.reu_base_lo = orig;
+
+    return (test == 0x55);
 }
 
 void reu_init(void) {
     reu_available = reu_detect();
-    
     if (reu_available) {
-        reu.control = 0;  // Increment both addresses during transfer
-        reu_size = reu_get_size();
-        
-        // Write signature to REU
-        uint32_t sig = REU_SIGNATURE;
-        reu_write(0, &sig, sizeof(sig));
+        REU_REGS.control = 0;
     }
 }
 
@@ -113,111 +62,106 @@ uint8_t reu_is_available(void) {
 
 void reu_read(REUPtr reu_addr, void* c64_addr, uint16_t size) {
     if (!reu_available || size == 0) return;
-    
-    reu.c64_base = (uint16_t)c64_addr;
-    reu.reu_base = (uint16_t)(reu_addr & 0xFFFF);
-    reu.reu_base_bank = (uint8_t)((reu_addr >> 16) & 0xFF);
-    reu.length = size;
-    reu.control = 0;
-    reu.command = REU_CMD_FETCH;  // REU -> C64
+
+    REU_SET_C64_ADDR((uint16_t)c64_addr);
+    REU_SET_REU_ADDR(reu_addr);
+    REU_SET_LENGTH(size);
+    REU_REGS.control = 0;
+    REU_REGS.command = REU_CMD_FETCH;  // DMA happens here - CPU halted
+    DMA_BARRIER();  // Tell compiler: memory at c64_addr was changed by DMA
 }
 
 void reu_write(REUPtr reu_addr, void* c64_addr, uint16_t size) {
     if (!reu_available || size == 0) return;
-    
-    reu.c64_base = (uint16_t)c64_addr;
-    reu.reu_base = (uint16_t)(reu_addr & 0xFFFF);
-    reu.reu_base_bank = (uint8_t)((reu_addr >> 16) & 0xFF);
-    reu.length = size;
-    reu.control = 0;
-    reu.command = REU_CMD_STASH;  // C64 -> REU
+
+    DMA_BARRIER();  // Ensure all pending writes to c64_addr are flushed
+    REU_SET_C64_ADDR((uint16_t)c64_addr);
+    REU_SET_REU_ADDR(reu_addr);
+    REU_SET_LENGTH(size);
+    REU_REGS.control = 0;
+    REU_REGS.command = REU_CMD_STASH;  // DMA happens here - CPU halted
 }
 
-void reu_save_page(int page_num, char lines_data[][MAX_LINE_LENGTH], int line_count) {
+void reu_save_page(int page_num) {
     REUPtr addr;
     REUPageHeader header;
-    int i;
-    uint16_t checksum = 0;
-    
-    if (!reu_available || page_num >= REU_MAX_PAGES) return;
-    
+
+    if (!reu_available) return;
+
     addr = reu_page_addr(page_num);
-    
-    // Calculate simple checksum
-    for (i = 0; i < line_count; i++) {
-        int j;
-        for (j = 0; lines_data[i][j] && j < MAX_LINE_LENGTH; j++) {
-            checksum += (uint8_t)lines_data[i][j];
-        }
-    }
-    
-    // Write header
-    header.num_lines = line_count;
-    header.checksum = checksum;
+
+    header.magic = REU_PAGE_MAGIC;
+    header.num_lines_stored = num_lines;
     reu_write(addr, &header, sizeof(header));
     addr += sizeof(header);
-    
-    // Write lines - transfer in chunks to handle 16-bit length limit
-    for (i = 0; i < line_count; i++) {
-        reu_write(addr, lines_data[i], MAX_LINE_LENGTH);
-        addr += MAX_LINE_LENGTH;
-    }
+
+    reu_write(addr, lines, LINES_PER_PAGE * MAX_LINE_LENGTH);
 }
 
-int reu_load_page(int page_num, char lines_data[][MAX_LINE_LENGTH]) {
+int reu_load_page(int page_num) {
     REUPtr addr;
     REUPageHeader header;
-    int i;
-    uint16_t checksum = 0;
-    
-    if (!reu_available || page_num >= REU_MAX_PAGES) return 0;
-    
+
+    if (!reu_available) return 0;
+
     addr = reu_page_addr(page_num);
-    
-    // Read header
+
     reu_read(addr, &header, sizeof(header));
-    addr += sizeof(header);
-    
-    if (header.num_lines == 0 || header.num_lines > LINES_PER_PAGE) {
+
+    if (header.magic != REU_PAGE_MAGIC) {
         return 0;
     }
-    
-    // Read lines
-    for (i = 0; i < header.num_lines; i++) {
-        reu_read(addr, lines_data[i], MAX_LINE_LENGTH);
-        addr += MAX_LINE_LENGTH;
+
+    if (header.num_lines_stored == 0 || header.num_lines_stored > LINES_PER_PAGE) {
+        return 0;
     }
-    
-    // Clear remaining lines
-    for (; i < LINES_PER_PAGE; i++) {
-        lines_data[i][0] = '\0';
-    }
-    
-    // Verify checksum
-    for (i = 0; i < header.num_lines; i++) {
-        int j;
-        for (j = 0; lines_data[i][j] && j < MAX_LINE_LENGTH; j++) {
-            checksum += (uint8_t)lines_data[i][j];
-        }
-    }
-    
-    if (checksum != header.checksum) {
-        return 0;  // Checksum mismatch
-    }
-    
-    return header.num_lines;
+
+    addr += sizeof(header);
+
+    reu_read(addr, lines, LINES_PER_PAGE * MAX_LINE_LENGTH);
+
+    return header.num_lines_stored;
 }
 
-void reu_clear_pages(void) {
-    REUPageHeader header;
-    int i;
-    
-    if (!reu_available) return;
-    
-    header.num_lines = 0;
-    header.checksum = 0;
-    
-    for (i = 0; i < REU_MAX_PAGES; i++) {
-        reu_write(reu_page_addr(i), &header, sizeof(header));
+uint32_t reu_get_size(void) {
+    // Must be volatile - REU DMA reads/writes these behind the compiler's back
+    static volatile uint8_t test_byte;
+    static volatile uint8_t read_byte;
+    uint32_t size = 0;
+    uint8_t bank;
+
+    if (!reu_available) return 0;
+
+    for (bank = 0; bank < 255; bank++) {
+        test_byte = 0xA5;
+
+        // Stash test_byte to REU bank N, address 0
+        REU_SET_C64_ADDR((uint16_t)&test_byte);
+        REU_SET_REU_ADDR(0);
+        REU_REGS.reu_bank = bank;
+        REU_SET_LENGTH(1);
+        REU_REGS.control = 0;
+        REU_REGS.command = REU_CMD_STASH;
+
+        // Change test byte so we know a fetch actually happened
+        test_byte = 0x5A;
+        read_byte = 0x00;
+
+        // Fetch from REU bank N, address 0 into read_byte
+        REU_SET_C64_ADDR((uint16_t)&read_byte);
+        REU_SET_REU_ADDR(0);
+        REU_REGS.reu_bank = bank;
+        REU_SET_LENGTH(1);
+        REU_REGS.control = 0;
+        REU_REGS.command = REU_CMD_FETCH;
+
+        // If we didn't read back what we wrote, this bank doesn't exist
+        if (read_byte != 0xA5) {
+            break;
+        }
+
+        size = ((uint32_t)(bank + 1)) << 16;
     }
+
+    return size;
 }

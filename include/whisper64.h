@@ -13,11 +13,11 @@
 #define EDIT_HEIGHT 23
 #define SCREEN_RAM ((unsigned char *)0x0400)
 
-// Buffer constants
-#define MAX_LINES 256
-#define MAX_LINE_LENGTH 220
-#define MAX_DIR_ENTRIES 100
-#define LINES_PER_PAGE 64
+// Buffer constants 
+#define MAX_LINE_LENGTH 80
+#define LINES_PER_PAGE 48
+#define MAX_DIR_ENTRIES 40
+#define MAX_LINES 128
 
 // Key codes
 #define KEY_RETURN 13
@@ -35,6 +35,7 @@
 #define KEY_DOWN 17
 #define KEY_LEFT 157
 #define KEY_RIGHT 29
+#define KEY_STOP 3
 
 // Colors
 #define COL_WHITE 1
@@ -52,6 +53,6 @@
 #define CURSOR_CHAR 160
 
 // Temp file for paging
-#define TEMP_FILE "$WHISPER$"
+#define TEMP_FILE "$W$"
 
 #endif // WHISPER64_H

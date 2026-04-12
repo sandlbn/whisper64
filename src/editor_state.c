@@ -13,14 +13,14 @@ int current_drive = 8;
 char current_filename[17] = "";
 char page_modified = 0;
 
-// Search/Replace state
-char search_term[40];
-char replace_term[40];
+// Search/Replace state - matches header
+char search_term[21];
+char replace_term[21];
 int search_line = 0;
 int search_pos = 0;
 
-// Copy/Paste state
-char clipboard[4][MAX_LINE_LENGTH];
+// Copy/Paste state - matches header
+char clipboard[2][MAX_LINE_LENGTH];
 int clipboard_lines = 0;
 int mark_active = 0;
 int mark_start_x = 0, mark_start_y = 0;
@@ -41,8 +41,8 @@ int num_mappings = 0;
 // BASIC keywords for syntax highlighting
 const char *basic_keywords[] = {
     "PRINT", "FOR", "NEXT", "IF", "THEN", "GOTO", "GOSUB", "RETURN",
-    "REM", "LET", "DIM", "READ", "DATA", "RESTORE", "STOP", "END",
-    "INPUT", "GET", "POKE", "PEEK", "SYS", "LOAD", "SAVE", "RUN",
-    "LIST", "NEW", "CLR", "AND", "OR", "NOT", "TO", "STEP",
+    "REM", "LET", "DIM", "READ", "DATA", "INPUT", "GET", "POKE",
+    "PEEK", "SYS", "LOAD", "SAVE", "RUN", "LIST", "NEW", "CLR",
+    "AND", "OR", "NOT", "TO", "STEP", "END", "STOP", "RESTORE",
     NULL
 };

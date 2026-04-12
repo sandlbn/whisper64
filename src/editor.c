@@ -1,16 +1,23 @@
 #include "editor.h"
 #include "editor_state.h"
 #include "screen.h"
+#include "reu.h"
 
-void save_current_page_to_temp() {
+void save_current_page_to_temp(void) {
     char temp_name[20];
     int i, len;
     
-    if (!page_modified || total_lines <= LINES_PER_PAGE) {
+    if (!page_modified) {
         return;
     }
     
-    sprintf(temp_name, "%s.P%d", TEMP_FILE, current_page);
+    if (reu_is_available()) {
+        reu_save_page(current_page);
+        page_modified = 0;
+        return;
+    }
+    
+    sprintf(temp_name, "@0:%s.P%d,S,W", TEMP_FILE, current_page);
     
     cbm_k_setlfs(2, current_drive, 2);
     cbm_k_setnam(temp_name);
@@ -40,18 +47,24 @@ void load_page(int page_num) {
     unsigned char ch;
     
     if (page_num == current_page) return;
+    if (page_num < 0 || page_num >= num_pages) return;
     
     save_current_page_to_temp();
     
     current_page = page_num;
     memset(lines, 0, sizeof(lines));
+    num_lines = 1;
     
-    if (total_lines <= LINES_PER_PAGE) {
-        num_lines = total_lines;
-        return;
+    if (reu_is_available()) {
+        int loaded = reu_load_page(page_num);
+        if (loaded > 0) {
+            num_lines = loaded;
+            page_modified = 0;
+            return;
+        }
     }
     
-    sprintf(temp_name, "%s.P%d", TEMP_FILE, page_num);
+    sprintf(temp_name, "%s.P%d,S,R", TEMP_FILE, page_num);
     
     cbm_k_setlfs(2, current_drive, 2);
     cbm_k_setnam(temp_name);
@@ -74,7 +87,7 @@ void load_page(int page_num) {
             }
         }
         
-        if (pos > 0 || i == 0) {
+        if (pos > 0) {
             lines[i][pos] = '\0';
             i++;
         }
@@ -82,27 +95,50 @@ void load_page(int page_num) {
         cbm_k_clrch();
         cbm_k_close(2);
         
-        num_lines = i;
-    } else {
+        if (i > 0) {
+            num_lines = i;
+        }
+    }
+    
+    if (num_lines < 1) {
         num_lines = 1;
     }
+    
+    page_modified = 0;
 }
 
-void check_page_boundary() {
-    if (cursor_y >= LINES_PER_PAGE && current_page < num_pages - 1) {
-        load_page(current_page + 1);
-        cursor_y = 0;
-        scroll_offset = 0;
-    }
-    else if (cursor_y < 0 && current_page > 0) {
+static void create_new_page(void) {
+    save_current_page_to_temp();
+    
+    num_pages++;
+    current_page++;
+    
+    memset(lines, 0, sizeof(lines));
+    num_lines = 1;
+    cursor_x = 0;
+    cursor_y = 0;
+    scroll_offset = 0;
+    page_modified = 1;
+}
+
+void check_page_boundary(void) {
+    if (cursor_y >= num_lines && cursor_y >= LINES_PER_PAGE) {
+        if (current_page < num_pages - 1) {
+            load_page(current_page + 1);
+            cursor_y = 0;
+            cursor_x = 0;
+            scroll_offset = 0;
+        }
+    } else if (cursor_y < 0 && current_page > 0) {
         load_page(current_page - 1);
-        cursor_y = LINES_PER_PAGE - 1;
+        cursor_y = num_lines - 1;
+        if (cursor_y < 0) cursor_y = 0;
         scroll_offset = cursor_y - EDIT_HEIGHT + 1;
         if (scroll_offset < 0) scroll_offset = 0;
     }
 }
 
-void init_editor() {
+void init_editor(void) {
     clrscr();
     memset(lines, 0, sizeof(lines));
     num_lines = 1;
@@ -136,8 +172,8 @@ void insert_char(char c) {
         cursor_x++;
         page_modified = 1;
         
-        if (cursor_x >= EDIT_WIDTH) {
-            if (num_lines < LINES_PER_PAGE - 1) {
+        if (cursor_x >= EDIT_WIDTH && len >= EDIT_WIDTH) {
+            if (num_lines < LINES_PER_PAGE) {
                 memmove(&lines[cursor_y + 2], &lines[cursor_y + 1], 
                         (num_lines - cursor_y - 1) * sizeof(lines[0]));
                 
@@ -157,7 +193,7 @@ void insert_char(char c) {
     }
 }
 
-void delete_char() {
+void delete_char(void) {
     int len = strlen(lines[cursor_y]);
     
     if (cursor_x > 0) {
@@ -188,24 +224,43 @@ void delete_char() {
     }
 }
 
-void new_line() {
-    if (num_lines < LINES_PER_PAGE - 1) {
-        memmove(&lines[cursor_y + 2], &lines[cursor_y + 1], 
-                (num_lines - cursor_y - 1) * sizeof(lines[0]));
-        
-        strcpy(lines[cursor_y + 1], &lines[cursor_y][cursor_x]);
-        lines[cursor_y][cursor_x] = '\0';
-        
-        num_lines++;
-        total_lines++;
-        cursor_y++;
-        cursor_x = 0;
-        page_modified = 1;
-        
-        if (cursor_y - scroll_offset >= EDIT_HEIGHT) {
-            scroll_offset++;
+void new_line(void) {
+    if (num_lines >= LINES_PER_PAGE) {
+        if (cursor_y == num_lines - 1) {
+            char remainder[MAX_LINE_LENGTH];
+            strcpy(remainder, &lines[cursor_y][cursor_x]);
+            lines[cursor_y][cursor_x] = '\0';
+            
+            page_modified = 1;
+            create_new_page();
+            
+            strcpy(lines[0], remainder);
+            cursor_x = 0;
+            cursor_y = 0;
+            total_lines++;
+            return;
+        } else {
+            show_message("PAGE FULL - MOVE TO END", COL_YELLOW);
+            return;
         }
-        
-        num_pages = (total_lines + LINES_PER_PAGE - 1) / LINES_PER_PAGE;
     }
+    
+    memmove(&lines[cursor_y + 2], &lines[cursor_y + 1], 
+            (num_lines - cursor_y - 1) * sizeof(lines[0]));
+    
+    strcpy(lines[cursor_y + 1], &lines[cursor_y][cursor_x]);
+    lines[cursor_y][cursor_x] = '\0';
+    
+    num_lines++;
+    total_lines++;
+    cursor_y++;
+    cursor_x = 0;
+    page_modified = 1;
+    
+    if (cursor_y - scroll_offset >= EDIT_HEIGHT) {
+        scroll_offset++;
+    }
+    
+    num_pages = (total_lines + LINES_PER_PAGE - 1) / LINES_PER_PAGE;
+    if (num_pages < 1) num_pages = 1;
 }

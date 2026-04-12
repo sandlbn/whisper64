@@ -209,6 +209,15 @@ int main(void) {
                 if (cursor_y < scroll_offset) {
                     scroll_offset--;
                 }
+            } else if (current_page > 0) {
+                // Move to previous page
+                load_page(current_page - 1);
+                cursor_y = num_lines - 1;
+                scroll_offset = cursor_y - EDIT_HEIGHT + 1;
+                if (scroll_offset < 0) scroll_offset = 0;
+                if (cursor_x > strlen(lines[cursor_y])) {
+                    cursor_x = strlen(lines[cursor_y]);
+                }
             }
             if (mark_active) {
                 mark_end_x = cursor_x;
@@ -224,6 +233,12 @@ int main(void) {
                 if (cursor_y - scroll_offset >= EDIT_HEIGHT) {
                     scroll_offset++;
                 }
+            } else if (current_page < num_pages - 1) {
+                // Move to next page
+                load_page(current_page + 1);
+                cursor_y = 0;
+                cursor_x = 0;
+                scroll_offset = 0;
             }
             if (mark_active) {
                 mark_end_x = cursor_x;
@@ -231,12 +246,15 @@ int main(void) {
             }
             update_cursor();
         } else if (c == KEY_HOME) {
+            // Go to absolute start (page 0, line 0)
+            if (current_page != 0) {
+                load_page(0);
+            }
             cursor_x = 0;
             cursor_y = 0;
             scroll_offset = 0;
             update_cursor();
         }
-        // Regular typing
         else if (c >= 32 && c < 128) {
             save_undo_state();
             insert_char(c);

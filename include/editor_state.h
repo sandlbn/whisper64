@@ -17,13 +17,13 @@ extern char current_filename[17];
 extern char page_modified;
 
 // Search/Replace state
-extern char search_term[40];
-extern char replace_term[40];
+extern char search_term[21];
+extern char replace_term[21];
 extern int search_line;
 extern int search_pos;
 
-// Copy/Paste state
-extern char clipboard[4][MAX_LINE_LENGTH];
+// Copy/Paste state - reduced
+extern char clipboard[2][MAX_LINE_LENGTH];
 extern int clipboard_lines;
 extern int mark_active;
 extern int mark_start_x, mark_start_y;
@@ -44,8 +44,8 @@ extern int num_mappings;
 // Directory browser
 typedef struct {
     char name[17];
-    int blocks;
-    char type[5];
+    unsigned int blocks; 
+    char type[4]; 
 } DirEntry;
 
 extern DirEntry dir_entries[MAX_DIR_ENTRIES];
