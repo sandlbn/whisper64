@@ -85,22 +85,24 @@ void draw_text_line(int screen_row, int line_num) {
     int ew = edit_width;
 
     if (screen_mode == MODE_80COL) {
+        // Fast path: build 80-char buffer, render entire row at once
+        char rowbuf[80];
         int i, len;
 
         if (line_num < num_lines) {
-            cputc_at_80(0, screen_row, (line_num / 10) + '0', COL_CYAN);
-            cputc_at_80(1, screen_row, (line_num % 10) + '0', COL_CYAN);
-            cputc_at_80(2, screen_row, ':', COL_CYAN);
+            rowbuf[0] = (line_num / 10) + '0';
+            rowbuf[1] = (line_num % 10) + '0';
+            rowbuf[2] = ':';
             len = strlen(lines[line_num]);
-            for (i = 0; i < ew; i++) {
-                char c = (i < len) ? lines[line_num][i] : ' ';
-                cputc_at_80(3 + i, screen_row, c, COL_WHITE);
-            }
+            for (i = 0; i < ew && i < len; i++)
+                rowbuf[3 + i] = lines[line_num][i];
+            for (; i < ew; i++)
+                rowbuf[3 + i] = ' ';
         } else {
-            for (i = 0; i < 3 + ew; i++) {
-                cputc_at_80(i, screen_row, ' ', COL_WHITE);
-            }
+            memset(rowbuf, ' ', 3 + ew);
         }
+
+        render_line_80(screen_row, rowbuf, 3 + ew, 0, 80, COL_WHITE);
         return;
     }
 
@@ -265,14 +267,10 @@ void draw_cursor() {
             int cell_col = screen_x >> 1;
             int side = screen_x & 1;
             uint8_t xor_mask = (side == 0) ? 0xF0 : 0x0F;
-            uint8_t old_01;
 
             bmp = BITMAP_BASE + (uint16_t)screen_y * 320 + (uint16_t)cell_col * 8;
 
-            __asm__ volatile("sei");
-            old_01 = PEEK(0x01);
-            POKE(0x01, old_01 & 0xF8);
-
+            // Uses outer begin_draw from update_cursor (draw_depth > 0)
             bmp[0] ^= xor_mask;
             bmp[1] ^= xor_mask;
             bmp[2] ^= xor_mask;
@@ -281,9 +279,6 @@ void draw_cursor() {
             bmp[5] ^= xor_mask;
             bmp[6] ^= xor_mask;
             bmp[7] ^= xor_mask;
-
-            POKE(0x01, old_01);
-            __asm__ volatile("cli");
         } else {
             int pos = screen_y * SCREEN_WIDTH + screen_x;
             int len = strlen(lines[cursor_y]);
@@ -304,8 +299,13 @@ void update_cursor() {
         mouse_hide_cursor();
     }
 
+    // Batch all bitmap + color writes under one ROM banking operation
+    if (screen_mode == MODE_80COL) screen80_begin_draw();
+
     redraw_screen();
     draw_cursor();
+
+    if (screen_mode == MODE_80COL) screen80_end_draw();
 
     if (mouse_is_enabled()) {
         mouse_draw_cursor();
@@ -316,16 +316,23 @@ void show_message(const char *msg, unsigned char col) {
     int i;
     int sw = screen_width;
 
-    if (screen_mode == MODE_80COL) screen80_begin_draw();
-
-    for (i = 0; i < sw; i++) {
-        cputc_at(i, 24, ' ', col);
+    if (screen_mode == MODE_80COL) {
+        screen80_begin_draw();
+        for (i = 0; i < sw; i++) {
+            cputc_at_80(i, 24, ' ', col);
+        }
+        cputs_at_80(0, 24, msg, col);
+        if (basic_mode) {
+            cputs_at_80(sw - 8, 24, "[BASIC]", COL_PURPLE);
+        }
+        screen80_end_draw();
+    } else {
+        for (i = 0; i < sw; i++) {
+            cputc_at(i, 24, ' ', col);
+        }
+        cputs_at(0, 24, msg, col);
+        if (basic_mode) {
+            cputs_at(sw - 8, 24, "[BASIC]", COL_PURPLE);
+        }
     }
-    cputs_at(0, 24, msg, col);
-
-    if (basic_mode) {
-        cputs_at(sw - 8, 24, "[BASIC]", COL_PURPLE);
-    }
-
-    if (screen_mode == MODE_80COL) screen80_end_draw();
 }
