@@ -190,7 +190,7 @@ int main(void) {
         } else if (c == KEY_DELETE) {
             save_undo_state();
             delete_char();
-            update_cursor();
+            update_current_line();
         } else if (c == KEY_LEFT) {
             if (cursor_x > 0) {
                 cursor_x--;
@@ -279,7 +279,7 @@ int main(void) {
         else if (c >= 32 && c < 128) {
             save_undo_state();
             insert_char(c);
-            update_cursor();
+            update_current_line();
         }
     }
     

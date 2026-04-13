@@ -294,6 +294,34 @@ void draw_cursor() {
     }
 }
 
+// Fast update: only redraws the current line + title bar position + cursor
+// Use for typing operations (insert/delete char) instead of full redraw
+void update_current_line(void) {
+    int screen_y = cursor_y - scroll_offset + 1;
+
+    if (screen_mode == MODE_80COL) screen80_begin_draw();
+
+    // Update position in title bar
+    {
+        char pos_info[15];
+        int global_line = current_page * LINES_PER_PAGE + cursor_y + 1;
+        sprintf(pos_info, " %d:%d  ", global_line, cursor_x + 1);
+        cputs_at(8, 0, pos_info, COL_GREEN);
+    }
+
+    // Redraw only the current line
+    if (screen_y >= 1 && screen_y <= EDIT_HEIGHT) {
+        if (screen_mode != MODE_80COL) {
+            draw_line_number(screen_y, cursor_y);
+        }
+        draw_text_line(screen_y, cursor_y);
+    }
+
+    draw_cursor();
+
+    if (screen_mode == MODE_80COL) screen80_end_draw();
+}
+
 void update_cursor() {
     if (mouse_is_enabled()) {
         mouse_hide_cursor();
