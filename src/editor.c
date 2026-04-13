@@ -172,13 +172,13 @@ void insert_char(char c) {
         cursor_x++;
         page_modified = 1;
         
-        if (cursor_x >= EDIT_WIDTH && len >= EDIT_WIDTH) {
+        if (cursor_x >= edit_width && len >= edit_width) {
             if (num_lines < LINES_PER_PAGE) {
                 memmove(&lines[cursor_y + 2], &lines[cursor_y + 1], 
                         (num_lines - cursor_y - 1) * sizeof(lines[0]));
                 
-                strcpy(lines[cursor_y + 1], &lines[cursor_y][EDIT_WIDTH]);
-                lines[cursor_y][EDIT_WIDTH] = '\0';
+                strcpy(lines[cursor_y + 1], &lines[cursor_y][edit_width]);
+                lines[cursor_y][edit_width] = '\0';
                 
                 num_lines++;
                 total_lines++;

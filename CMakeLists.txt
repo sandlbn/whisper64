@@ -21,6 +21,7 @@ set(SOURCES
     src/screen.c
     src/editor.c
     src/reu.c
+    src/screen80.c
     src/file_ops.c
     src/search.c
     src/clipboard.c

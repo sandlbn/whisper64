@@ -3,6 +3,11 @@
 
 #include "whisper64.h"
 
+// Screen mode (0=40col, 1=80col)
+extern unsigned char screen_mode;
+extern int edit_width;
+extern int screen_width;
+
 // Text buffer
 extern char lines[LINES_PER_PAGE][MAX_LINE_LENGTH];
 extern int num_lines;

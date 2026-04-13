@@ -20,15 +20,17 @@
 #include "goto.h"
 #include "mouse.h"
 #include "reu.h"
+#include "screen80.h"
 
 int main(void) {
     char c;
     unsigned char click;
     unsigned char clicked_line, clicked_col;
-    
+
     init_editor();
     reu_init();
     mouse_init();
+    screen80_init();  // Generate 4x8 font from ROM (always, cheap to do)
     update_cursor();
 
     if (reu_is_available()) {
@@ -93,6 +95,25 @@ int main(void) {
             mouse_hide_cursor();
         }
         
+        // Toggle 80-column mode with Ctrl+D (4)
+        if (c == 4) {
+            if (screen_mode == MODE_80COL) {
+                screen80_disable();
+                edit_width = EDIT_WIDTH;
+                screen_width = SCREEN_WIDTH;
+                clrscr();
+                update_cursor();
+                show_message("40-COLUMN MODE", COL_GREEN);
+            } else {
+                screen80_enable();
+                edit_width = EDIT_WIDTH_80;
+                screen_width = SCREEN_WIDTH_80;
+                update_cursor();
+                show_message("80-COL MODE - CTRL+D TO TOGGLE", COL_GREEN);
+            }
+            continue;
+        }
+
         // Toggle mouse with Ctrl+J (10)
         if (c == 10) {
             if (mouse_is_enabled()) {

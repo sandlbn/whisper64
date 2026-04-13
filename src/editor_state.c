@@ -1,5 +1,10 @@
 #include "editor_state.h"
 
+// Screen mode
+unsigned char screen_mode = 0;  // MODE_40COL
+int edit_width = EDIT_WIDTH;
+int screen_width = SCREEN_WIDTH;
+
 // Text buffer
 char lines[LINES_PER_PAGE][MAX_LINE_LENGTH];
 int num_lines = 1;
