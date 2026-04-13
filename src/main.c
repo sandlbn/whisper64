@@ -19,15 +19,26 @@
 #include "undo.h"
 #include "goto.h"
 #include "mouse.h"
+#include "reu.h"
+#include "screen80.h"
 
 int main(void) {
     char c;
     unsigned char click;
     unsigned char clicked_line, clicked_col;
-    
+
     init_editor();
+    reu_init();
     mouse_init();
+    screen80_init();  // Generate 4x8 font from ROM (always, cheap to do)
     update_cursor();
+
+    if (reu_is_available()) {
+        char msg[40];
+        sprintf(msg, "REU: %luKB  MAX %d PAGES", reu_get_size() / 1024, reu_max_page_count());
+        show_message(msg, COL_GREEN);
+        cgetc();
+    }
     
     show_message("F1=LOAD F2=SAVE F4=BASIC CTRL+J=MOUSE", COL_CYAN);
     
@@ -84,6 +95,25 @@ int main(void) {
             mouse_hide_cursor();
         }
         
+        // Toggle 80-column mode with Ctrl+D (4)
+        if (c == 4) {
+            if (screen_mode == MODE_80COL) {
+                screen80_disable();
+                edit_width = EDIT_WIDTH;
+                screen_width = SCREEN_WIDTH;
+                clrscr();
+                update_cursor();
+                show_message("40-COLUMN MODE", COL_GREEN);
+            } else {
+                screen80_enable();
+                edit_width = EDIT_WIDTH_80;
+                screen_width = SCREEN_WIDTH_80;
+                update_cursor();
+                show_message("80-COL MODE - CTRL+D TO TOGGLE", COL_GREEN);
+            }
+            continue;
+        }
+
         // Toggle mouse with Ctrl+J (10)
         if (c == 10) {
             if (mouse_is_enabled()) {
@@ -160,7 +190,7 @@ int main(void) {
         } else if (c == KEY_DELETE) {
             save_undo_state();
             delete_char();
-            update_cursor();
+            update_current_line();
         } else if (c == KEY_LEFT) {
             if (cursor_x > 0) {
                 cursor_x--;
@@ -200,6 +230,15 @@ int main(void) {
                 if (cursor_y < scroll_offset) {
                     scroll_offset--;
                 }
+            } else if (current_page > 0) {
+                // Move to previous page
+                load_page(current_page - 1);
+                cursor_y = num_lines - 1;
+                scroll_offset = cursor_y - EDIT_HEIGHT + 1;
+                if (scroll_offset < 0) scroll_offset = 0;
+                if (cursor_x > strlen(lines[cursor_y])) {
+                    cursor_x = strlen(lines[cursor_y]);
+                }
             }
             if (mark_active) {
                 mark_end_x = cursor_x;
@@ -215,6 +254,12 @@ int main(void) {
                 if (cursor_y - scroll_offset >= EDIT_HEIGHT) {
                     scroll_offset++;
                 }
+            } else if (current_page < num_pages - 1) {
+                // Move to next page
+                load_page(current_page + 1);
+                cursor_y = 0;
+                cursor_x = 0;
+                scroll_offset = 0;
             }
             if (mark_active) {
                 mark_end_x = cursor_x;
@@ -222,16 +267,19 @@ int main(void) {
             }
             update_cursor();
         } else if (c == KEY_HOME) {
+            // Go to absolute start (page 0, line 0)
+            if (current_page != 0) {
+                load_page(0);
+            }
             cursor_x = 0;
             cursor_y = 0;
             scroll_offset = 0;
             update_cursor();
         }
-        // Regular typing
         else if (c >= 32 && c < 128) {
             save_undo_state();
             insert_char(c);
-            update_cursor();
+            update_current_line();
         }
     }
     

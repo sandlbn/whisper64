@@ -3,6 +3,11 @@
 
 #include "whisper64.h"
 
+// Screen mode (0=40col, 1=80col)
+extern unsigned char screen_mode;
+extern int edit_width;
+extern int screen_width;
+
 // Text buffer
 extern char lines[LINES_PER_PAGE][MAX_LINE_LENGTH];
 extern int num_lines;
@@ -17,13 +22,13 @@ extern char current_filename[17];
 extern char page_modified;
 
 // Search/Replace state
-extern char search_term[40];
-extern char replace_term[40];
+extern char search_term[21];
+extern char replace_term[21];
 extern int search_line;
 extern int search_pos;
 
-// Copy/Paste state
-extern char clipboard[4][MAX_LINE_LENGTH];
+// Copy/Paste state - reduced
+extern char clipboard[2][MAX_LINE_LENGTH];
 extern int clipboard_lines;
 extern int mark_active;
 extern int mark_start_x, mark_start_y;
@@ -44,7 +49,7 @@ extern int num_mappings;
 // Directory browser
 typedef struct {
     char name[17];
-    int blocks;
+    unsigned int blocks; 
     char type[5];
 } DirEntry;
 

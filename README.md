@@ -1,171 +1,119 @@
-# Whisper64 🐕
-A feature-rich text editor for the Commodore 64.
-
-![Whisper64 Screenshot](screenshot.png)
+# Whisper64
+A text editor for the Commodore 64.
 
 ## Features
 
+- **80-Column Mode**: Bitmap-based 80-column display using a 4x8 pixel font (toggle with CTRL+D)
+- **REU Support**: RAM Expansion Unit for fast page swapping (auto-detected, up to 16MB)
 - **BASIC Mode** with keyword syntax highlighting and automatic line renumbering
-- **Smart Paging**: 256-line capacity with automatic 64-line pages
+- **Multi-Page Editing**: Pages stored in REU or disk temp files
 - **Directory Browser**: Multi-drive support (8-15) with file type display
 - **Search & Replace**: Find text with wrap-around and replace all
 - **Copy/Paste**: Visual mark mode for selecting and copying text
-- **Undo/Redo**: One-level undo and redo for text editing operations
-- **Goto Line**: Jump directly to any line number in your file
-- **Mouse Support**: Experimental support for Commodore 1351 mouse (click to position cursor)
-- **Status Bar**: Shows filename, cursor position, drive, page, and mode indicators
-- **37×23 editing area** with line numbers
+- **Undo/Redo**: One-level undo and redo
+- **Goto Line**: Jump to any line number
+- **Mouse Support**: 1351 mouse on Control Port 1
+- **40-column mode**: 37x23 editing area with line numbers
+- **80-column mode**: 77x23 editing area with line numbers
 
-## Installation
+## Prerequisites
 
-### Prerequisites
-Install the [LLVM-MOS SDK](https://github.com/llvm-mos/llvm-mos-sdk#getting-started)
-
-### Building
+Install the [LLVM-MOS SDK](https://github.com/llvm-mos/llvm-mos-sdk):
 ```bash
-mkdir build
-cd build
-cmake ..
-cmake --build .
+# macOS (Apple Silicon)
+curl -sL https://github.com/llvm-mos/llvm-mos-sdk/releases/latest/download/llvm-mos-macos.tar.xz -o /tmp/llvm-mos.tar.xz
+mkdir -p ~/llvm-mos && tar -xf /tmp/llvm-mos.tar.xz -C ~/llvm-mos --strip-components=1
 ```
 
-The compiled program will be at `build/whisper64.prg`
+## Building
 
-### Running
-Load on your C64 or emulator:
+```bash
+mkdir build && cd build
+cmake -DCMAKE_PREFIX_PATH=~/llvm-mos ..
+make
 ```
-LOAD "WHISPER64.PRG",8,1
+
+Output: `build/whisper64.prg`
+
+A 512KB REU image (`whisper64.reu`) and a blank D64 disk image (`whisper64.d64`) are created automatically during the build.
+
+## Running
+
+### VICE Emulator
+
+```bash
+./run_vice.sh
+```
+
+This launches VICE (x64sc) with REU enabled and a D64 disk image attached to drive 8.
+
+### Real Hardware
+
+Transfer `whisper64.prg` to a disk or SD card and load:
+```
+LOAD "WHISPER64",8,1
 RUN
 ```
+
+For REU support, ensure the REU is connected before starting.
 
 ## Key Commands
 
 | Key | Function |
 |-----|----------|
-| **F1** | Load file (opens directory browser) |
-| **F2** | Save file (with overwrite protection) |
+| **F1** | Load file (directory browser) |
+| **F2** | Save file |
 | **F3** | Select drive (8-15) |
-| **F4** | Toggle BASIC mode / Renumber BASIC lines |
+| **F4** | Toggle BASIC mode / Renumber lines |
 | **F5** | Find text |
-| **F6** | Find & replace (with replace all option) |
-| **F7** | Find next occurrence |
+| **F6** | Find & replace |
+| **F7** | Find next |
 | **F8** | Help screen |
-| **CTRL+C** | Copy marked text (up to 8 lines) |
-| **CTRL+G** | Jump directly to any line number |
-| **CTRL+J** | Toggle mouse on/off (experimental) |
-| **CTRL+K** | Toggle mark mode for selection |
-| **CTRL+V** | Paste copied text |
-| **CTRL+Y** | Redo the last undone change |
-| **CTRL+Z** | Undo the last change |
-| **HOME** | Go to top of file |
-| **Arrows** | Move cursor (updates mark selection when active) |
+| **CTRL+C** | Copy marked text |
+| **CTRL+D** | Toggle 40/80 column mode |
+| **CTRL+G** | Goto line |
+| **CTRL+J** | Toggle mouse on/off |
+| **CTRL+K** | Toggle mark mode |
+| **CTRL+V** | Paste text |
+| **CTRL+W** | New file (clear buffer) |
+| **CTRL+Y** | Redo |
+| **CTRL+Z** | Undo |
+| **HOME** | Go to start of file |
+| **Arrows** | Move cursor |
 
-## Keyboard Shortcuts Reference
+## 80-Column Mode
 
-### File Operations
-- **F1** → Load file (directory browser)
-- **F2** → Save file
+Press **CTRL+D** to toggle between 40 and 80 column modes.
 
-### Editing
-- **CTRL+C** → Copy marked text
-- **CTRL+V** → Paste text
-- **CTRL+Z** → Undo
-- **CTRL+Y** → Redo
-- **CTRL+K** → Toggle mark mode
-- **CTRL+G** → Goto line
+80-column mode uses VIC-II hires bitmap mode with a 4x8 pixel font (SCREEN-80 from Compute's Gazette, 1984). The display is rendered in VIC bank 3 ($C000-$FFFF) with bitmap data at $E000 and video matrix at $D800.
 
-### Search
-- **F5** → Find text
-- **F6** → Find & replace
-- **F7** → Find next
+Limitations:
+- Each pair of adjacent characters shares one foreground color
+- Slower screen updates than 40-column mode (typing updates only the current line for speed)
 
-### Navigation
-- **HOME** → Jump to top of file
-- **Arrow Keys** → Move cursor
+## REU Support
 
-### Other
-- **CTRL+J** → Toggle mouse support (experimental)
-- **F3** → Select drive (8-15)
-- **F4** → BASIC mode / Renumber
-- **F8** → Help screen
+The editor auto-detects REU at startup and shows the available size and maximum page count. With REU, page swapping is instant (DMA transfer) instead of using slow disk temp files.
 
-## Mouse Support (Experimental)
+Page capacity depends on REU size:
+- 256KB: ~66 pages
+- 512KB: ~136 pages
 
-Whisper64 includes experimental support for the **Commodore 1351 mouse** on **Control Port 1** (left port).
-
-**To use the mouse:**
-1. Connect your 1351 mouse to Control Port 1
-2. Press **CTRL+J** to enable mouse mode
-3. Move the mouse to position the cursor (shown as yellow `^`)
-4. Click the left button to position the text cursor
-5. Press **CTRL+J** again to disable mouse mode
-
-**Notes:**
-- Mouse cursor is only shown when mouse mode is active
-- Clicking in the edit area (lines 1-23) positions the text cursor
-- Mouse sensitivity can be adjusted in `mouse.c` (`MOUSE_DIVISOR` constant)
+All pages are saved to and loaded from REU when switching pages. File save (F2) writes all pages to disk. File load (F1) reads the file and distributes content across pages as needed.
 
 ## BASIC Mode
 
-Press **F4** to enable BASIC mode, which provides:
-- Purple keyword highlighting for BASIC commands
-- Press **F4** again to renumber all lines (10, 20, 30...)
-- Automatic update of GOTO, GOSUB, THEN, and ELSE references
-- Line number display in cyan
+Press **F4** to enable BASIC mode:
+- Keyword highlighting in purple
+- Press **F4** again to renumber lines (10, 20, 30...)
+- Updates GOTO, GOSUB, THEN, and ELSE references automatically
 
 ## Directory Browser
 
-Press **F1** to open the directory browser:
-- Shows disk name at top
-- Displays file type (PRG, SEQ, DEL, USR, REL)
-- Shows locked files with asterisk (*)
-- Displays block size for each file
-- Use **↑/↓** arrows to navigate
-- Press **RETURN** to load selected file
-- Press **RUN/STOP** to cancel
-
-## Status Bar
-
-The top status bar displays:
-- **Filename**: Currently loaded/saved file (8 chars)
-- **Line:Column**: Current cursor position
-- **[BAS]**: BASIC mode indicator (purple)
-- **[M]**: Mark mode active indicator (green)
-- **D:n**: Current drive number (cyan)
-- **Pn/n**: Current page / total pages (cyan, if multi-page)
-
-## Copy/Paste Operations
-
-To copy and paste text:
-1. Press **CTRL+K** to enter mark mode
-2. Use arrow keys to select text (selection shown in yellow)
-3. Press **CTRL+C** to copy the selected text
-4. Move cursor to destination
-5. Press **CTRL+V** to paste
-6. Press **CTRL+K** again to exit mark mode
-
-You can copy up to 8 lines at once. The copied text remains in the clipboard until you copy something new.
-
-## Search & Replace
-
-**Simple Search:**
-1. Press **F5** to open search
-2. Type the search term and press RETURN
-3. Use **F7** to find next occurrence
-4. Search wraps around to beginning when reaching end
-
-**Find & Replace:**
-1. First search with **F5**
-2. Press **F6** to open replace dialog
-3. Type replacement text
-4. Choose:
-   - **Y** to replace all occurrences at once
-   - **N** to manually replace each occurrence
-
-## Goto Line
-1. Press **CTRL+G**
-2. Type the line number (1-64)
-3. Press RETURN
+Press **F1** to open:
+- Shows disk name, file types (PRG, SEQ, DEL, USR, REL), block sizes
+- **UP/DOWN** to navigate, **RETURN** to load, **RUN/STOP** to cancel
 
 ## License
+
 Free to use and modify.

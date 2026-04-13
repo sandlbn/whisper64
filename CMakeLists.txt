@@ -4,7 +4,8 @@ cmake_minimum_required(VERSION 3.18)
 set(LLVM_MOS_PLATFORM c64)
 
 # Find the LLVM-MOS SDK package
-# Note: If LLVM-MOS is not in your PATH, you'll need to set CMAKE_PREFIX_PATH
+# Set CMAKE_PREFIX_PATH if llvm-mos is not in your PATH:
+#   cmake -DCMAKE_PREFIX_PATH=~/llvm-mos ..
 find_package(llvm-mos-sdk REQUIRED)
 
 # Project definition
@@ -19,6 +20,8 @@ set(SOURCES
     src/editor_state.c
     src/screen.c
     src/editor.c
+    src/reu.c
+    src/screen80.c
     src/file_ops.c
     src/search.c
     src/clipboard.c
@@ -32,15 +35,18 @@ set(SOURCES
 # Add the executable with all source files
 add_executable(whisper64.prg ${SOURCES})
 
-# Optimization flags for size 
+# Optimization flags for size
 target_compile_options(whisper64.prg PRIVATE -Os -ffunction-sections)
 
 target_link_options(whisper64.prg PRIVATE -Wl,--gc-sections -Wl,-s -Wl,-Map=whisper64.map)
 
-# Optional: Add custom target to show project structure
-add_custom_target(show_structure
-    COMMAND ${CMAKE_COMMAND} -E echo "Project Structure:"
-    COMMAND ${CMAKE_COMMAND} -E echo "  include/ - Header files"
-    COMMAND ${CMAKE_COMMAND} -E echo "  src/     - Source files"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+# Create blank REU image file (512KB) if it doesn't exist
+set(REU_IMAGE "${CMAKE_SOURCE_DIR}/whisper64.reu")
+set(REU_SIZE_KB 512)
+add_custom_command(
+    OUTPUT ${REU_IMAGE}
+    COMMAND dd if=/dev/zero of=${REU_IMAGE} bs=1024 count=${REU_SIZE_KB} 2>/dev/null
+    COMMENT "Creating ${REU_SIZE_KB}KB REU image"
 )
+add_custom_target(reu_image DEPENDS ${REU_IMAGE})
+add_dependencies(whisper64.prg reu_image)
