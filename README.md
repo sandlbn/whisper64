@@ -1,6 +1,8 @@
 # Whisper64
 A text editor for the Commodore 64.
 
+![Whisper64 Screenshot](screenshot.png)
+
 ## Features
 
 - **80-Column Mode**: Bitmap-based 80-column display using a 4x8 pixel font (toggle with CTRL+D)
